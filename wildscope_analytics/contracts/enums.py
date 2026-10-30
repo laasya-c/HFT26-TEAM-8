@@ -98,11 +98,54 @@ class AnalysisMetric(StrEnum):
     HOURLY_ACTIVITY = "hourly_activity"
     SPECIES_CAMERA_MATRIX = "species_camera_matrix"
     EFFORT_NORMALISED_RATES = "effort_normalised_rates"
+    # Phase 4 additions:
+    CROSS_CAMERA_ASSOCIATIONS = "cross_camera_associations"
     # Phase 1 legacy names kept for backward compatibility
     ACTIVITY_TIME_DISTRIBUTION = "activity_time_distribution"
     CROSS_CAMERA_ASSOCIATION = "cross_camera_association"
     CAMERA_ACTIVITY_SUMMARY = "camera_activity_summary"
     MONITORING_COVERAGE_SUMMARY = "monitoring_coverage_summary"
+
+
+class SpatialMode(StrEnum):
+    """
+    Spatial evaluation mode for cross-camera observation correlation (Phase 4, Feature F06).
+    - TIME_SPECIES_ONLY: GPS coordinates optional; spatial checks not evaluated.
+    - SPATIAL_WHEN_AVAILABLE: evaluates distance when coordinates exist; marks missing as unavailable.
+    - SPATIAL_REQUIRED: evaluates only pairs with genuine coordinates; returns UNAVAILABLE if missing.
+    """
+    TIME_SPECIES_ONLY = "time_species_only"
+    SPATIAL_WHEN_AVAILABLE = "spatial_when_available"
+    SPATIAL_REQUIRED = "spatial_required"
+
+
+class ClockComparabilityPolicy(StrEnum):
+    """
+    Policy declaring the operational basis for comparing timestamps across different cameras.
+    - DOCUMENTED_SYNC: clocks verified synchronized across deployment (e.g. NTP, GPS, manual sync).
+    - ANALYST_ASSUMPTION: explicit analyst policy assuming clocks are synchronized within stated bounds.
+    - OFFSETS_KNOWN: clock offsets and uncertainty are known and propagated conservatively.
+    - UNKNOWN: inter-camera clock alignment is unverified (returns INSUFFICIENT_DATA).
+    """
+    DOCUMENTED_SYNC = "documented_sync"
+    ANALYST_ASSUMPTION = "analyst_assumption"
+    OFFSETS_KNOWN = "offsets_known"
+    UNKNOWN = "unknown"
+
+
+class SpatialCheckStatus(StrEnum):
+    """Outcome of spatial rule evaluation for a candidate cross-camera encounter pair."""
+    NOT_EVALUATED = "not_evaluated"
+    UNAVAILABLE = "unavailable"
+    PASSED = "passed"
+    FAILED = "failed"
+    MEASURED = "measured"
+
+
+class TemporalRelation(StrEnum):
+    """Temporal interval relationship between two encounters."""
+    OVERLAPPING = "overlapping"
+    DISJOINT = "disjoint"
 
 
 class InclusionPolicy(StrEnum):

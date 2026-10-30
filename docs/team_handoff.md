@@ -1,26 +1,28 @@
-# WILDSCOPE Team Handoff — Phase 2 & Phase 3
+# WILDSCOPE Team Handoff — Phase 2, Phase 3 & Phase 4
 
 > **Prepared by:** Shravan (Analytics & Decision Intelligence Lead)
-> **Phase:** Phase 2 (Cross-Camera Activity Analytics) & Phase 3 (Conclusion-Sensitive Review Prioritisation — Feature F18)
-> **Status:** Complete. Both `analyze()` and `rank_review()` are fully implemented and verified.
-> **Schema version:** `1.2.0` (fully backward-compatible with `1.1.0` and `1.0.0`)
+> **Phase:** Phase 2 (Activity Analytics), Phase 3 (Review Prioritisation — F18), and Phase 4 (Cross-Camera Observation Correlation — F06)
+> **Status:** Complete. `analyze()`, `rank_review()`, and `find_cross_camera_associations()` are fully implemented and verified.
+> **Schema version:** `1.3.0` (fully backward-compatible with `1.2.0`, `1.1.0` and `1.0.0`)
 > **Branch:** `shravan`
-> **Test Suite:** **166 passed, 1 skipped** (Caltech real integration test skipped due to sandbox network isolation)
+> **Test Suite:** **202 passed, 1 skipped** (1 skipped case tests absent-file fallback; real 1,000-image dataset integration verified passing)
 
 ---
 
 ## 0. Executive Summary of Implementation
 
-| Capability | Phase 1 Baseline | Phase 2 Analytics | Phase 3 Decision Intelligence |
-|---|---|---|---|
-| `analyze()` | `UNAVAILABLE` | **Fully implemented** (7 core metrics) | Extended with `reference_image_species_counts` and explicit encounter processing statuses |
-| `rank_review()` | `UNAVAILABLE` | `UNAVAILABLE` (deferred) | **Fully implemented** (Feature F18: deterministic marginal sensitivity ranking) |
-| Schema Version | `1.0.0` | `1.1.0` | **`1.2.0`** (additive, backward-compatible) |
-| Data Source Modes | None | `operational_prediction` / `dataset_reference` | Enforced: `rank_review()` only runs on `operational_prediction` |
-| Encounter Capability | Implicit (`encounters == []`) | Inferred from presence | **Explicit metadata** via `EncounterProcessingStatus` (`COMPLETED`, `PENDING`, `FAILED`, `UNAVAILABLE`) |
-| Reference Metric Units | Masked as encounters | Documented distinction | **Dedicated metric** `reference_image_species_counts`; deprecation warning on `species_encounter_counts` |
-| Review Ordering | Clock timestamps only | `ReviewEvent.sequence_number` | Full regression safety: ambiguous conflicts excluded with explicit reporting |
-| Tests Passing | 38 | 117 passing (1 skipped) | **166 passing, 1 skipped** (real Caltech integration pending manual download) |
+| Capability | Phase 1 Baseline | Phase 2 Analytics | Phase 3 Decision Intelligence | Phase 4 Cross-Camera Correlation (F06) |
+|---|---|---|---|---|
+| `analyze()` | `UNAVAILABLE` | **Fully implemented** (7 core metrics) | Extended with `reference_image_species_counts` and explicit encounter statuses | Extended with `cross_camera_associations` operation |
+| `rank_review()` | `UNAVAILABLE` | `UNAVAILABLE` (deferred) | **Fully implemented** (Feature F18: marginal sensitivity ranking) | Stable parity preserved |
+| `find_cross_camera_associations()` | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | **Fully implemented** (Feature F06: sliding-window encounter correlation) |
+| Schema Version | `1.0.0` | `1.1.0` | `1.2.0` | **`1.3.0`** (additive, backward-compatible) |
+| Data Source Modes | None | `operational_prediction` / `dataset_reference` | Enforced: operational only for `rank_review()` | Enforced: operational only for cross-camera correlation |
+| Encounter Capability | Implicit (`encounters == []`) | Inferred from presence | Explicit via `EncounterProcessingStatus` | Full lifecycle support (completed empty vs pending/unavailable) |
+| Category Mapping | Broad mapping | Documented CCT categories | Mapped categories | **Part B fix:** explicit non-animal for vehicles/people; unmapped wildlife visible |
+| Spatial Modes | None | None | None | `time_species_only`, `spatial_when_available`, `spatial_required` |
+| Clock Policies | Implicit | Zone-aware | Zone-aware | `documented_sync`, `analyst_assumption`, `offsets_known`, `unknown` |
+| Tests Passing | 38 | 117 passing | 166 passing (1 skipped) | **202 passing, 1 skipped** |
 
 ---
 
@@ -192,6 +194,84 @@ A Detection is eligible for conclusion-sensitive review ranking if and only if:
 
 ---
 
+## 4. Phase 4: Cross-Camera Observation Correlation (Feature F06)
+
+### 4.1 Purpose and Critical Scientific Interpretation
+Cross-camera correlation finds pairs of recorded encounters from different cameras that satisfy explicit species and temporal rules, optionally applying spatial rules when genuine spatial coordinates exist.
+
+> [!CRITICAL]
+> A match means: **"Possible association between recorded sightings under the configured rules."**
+> It does **NOT** establish:
+> - The same individual animal.
+> - A confirmed movement between cameras.
+> - A migration route or wildlife corridor.
+> - A known travel speed.
+> - A probability of individual identity.
+>
+> Same-species sightings close in time can be coincidental. Every result strictly preserves this limitation.
+
+### 4.2 Architectural Design & Rules
+- **Entry Points:** `analyze(snapshot, request)` with `AnalysisMetric.CROSS_CAMERA_ASSOCIATIONS` or `find_cross_camera_associations(snapshot, request)`.
+- **Primary Inputs:** Operational encounters from Harsh/Santosh with timezone-aware start and end timestamps.
+- **Species Resolution:** Evaluates member detection effective labels using Phase 2 rules. Excludes rejected detections, empty frames, non-animal triggers, unreviewed predictions (under `REVIEWED_ONLY`), and ambiguous review conflicts. Deduplicates repeated detections within an encounter.
+- **Exact Taxon Matching:** Encounters associate only when their eligible species sets share at least one concrete taxon. `unknown` animal taxa never match one another.
+- **Camera Separation:** Compares only encounters from different cameras (`camera_id_a != camera_id_b`). Excludes same-camera pairs and self-pairs.
+- **Temporal Interval Gap:**
+  $$\text{nominal\_gap} = \max(0.0, (B.\text{start} - A.\text{end}).\text{total\_seconds}(), (A.\text{start} - B.\text{end}).\text{total\_seconds}())$$
+  $$\text{effective\_gap} = \max(0.0, \text{nominal\_gap} - \text{clock\_uncertainty\_seconds})$$
+  Passes temporal rule when $\text{effective\_gap} \le \text{max\_temporal\_separation\_seconds}$ (boundary included).
+  - Overlapping intervals: nominal gap is 0.0s; described as overlapping recorded intervals without asserting movement direction.
+  - Disjoint intervals: reports observed interval order (`A_before_B` or `B_before_A`) without equating this to animal travel.
+- **Clock Comparability Policies:**
+  - `DOCUMENTED_SYNC`: Verified physical clock synchronization across deployment.
+  - `ANALYST_ASSUMPTION`: Explicit analyst policy assuming synchronization within stated limits.
+  - `OFFSETS_KNOWN`: Conservative propagation of known clock uncertainty.
+  - `UNKNOWN`: Inter-camera clock alignment is unverified; returns `INSUFFICIENT_DATA`.
+- **Spatial Modes:**
+  1. `time_species_only`: GPS coordinates optional; `spatial_check_status = "not_evaluated"`.
+  2. `spatial_when_available`: Computes WGS84 Haversine distance when coordinates exist; checks `max_spatial_distance_meters` if set. For cameras lacking GPS, retains eligible time/species candidate with `spatial_check_status = "unavailable"`.
+  3. `spatial_required`: Evaluates only pairs with valid coordinates. If no cameras have GPS, returns `UNAVAILABLE`.
+  - *Disclaimer:* Measured camera separation is not animal travel distance; biological movement feasibility is not validated.
+- **Pair Deduplication & Non-Greedy Retention:**
+  - Canonical order: `association_id = f"assoc:{min(id_a, id_b)}::{max(id_a, id_b)}"`. No mirrored duplicates.
+  - All plausible candidates are retained within declared scope (no greedy 1-1 winner-take-all matching).
+  - No transitive identity: $A \leftrightarrow B$ and $B \leftrightarrow C$ do not imply $A \leftrightarrow C$ or merge encounters.
+- **Limits & Performance:**
+  - `result_limit`: Evaluates declared scope, returns top-k. Response status remains `OK`.
+  - `evaluation_limit`: Bounds pair simulation; reports `evaluation_policy`, sets `is_coverage_complete = False`, and sets status to `PARTIAL`.
+  - Performance: Sliding-window indexing by species and sorted start times verified for exact parity against an exhaustive $O(N^2)$ reference implementation.
+
+### 4.3 Category Mapping Corrections (Part B)
+- Explicit vehicle and person categories (`car`, `vehicle`, `truck`, `motorcycle`, `person`, `human`, `pedestrian`) are classified as `is_animal = False, is_empty = False`.
+- `empty` remains distinct as `is_animal = False, is_empty = True`.
+- Unmapped wildlife remains visible as unresolved animal taxa in `categories_unmapped`.
+- Truly unknown categories without clear indicators are flagged with warnings and not silently assumed to be animals.
+
+---
+
+## 5. Team Handoff Requirements for Phase 4
+
+### For Harsh (Vision & Clustering):
+1. **Valid Encounter Groupings:** Cross-camera correlation requires encounters with timezone-aware `start_time` and `end_time` intervals. Missing timestamps result in records being excluded.
+2. **Member Detections & Taxa:** Encounters must reference valid `member_detection_ids`. Operational predictions must include `classification_confidence` for cutoff filtering.
+3. **No Reference Masquerading:** Caltech CCT reference datasets contain image annotations, not temporal encounter groupings. Do not fabricate encounter memberships on reference snapshots.
+
+### For Santosh (Backend & Persistence):
+1. **Clock Metadata:** Populate `clock_comparability_policy` and `clock_uncertainty_seconds` based on camera trap deployment records (e.g. NTP sync status, field clock drift audits).
+2. **Camera Coordinates:** When GPS coordinates are recorded in deployments, populate `Camera.latitude` and `Camera.longitude` (WGS84 decimal degrees).
+3. **Immutable Snapshots & Revisions:** Enforce optimistic locking via `SnapshotMetadata.dataset_revision`. Any review event or grouping change must increment the revision.
+
+### For Laasya (Frontend & Presentation):
+1. **Mandatory Scientific Disclaimer:** Every association card or visualization must prominently state:
+   *"Possible association only; individual animal identity and movement are not established."*
+2. **Spatial Status Labeling:**
+   - If `spatial_check_status == "not_evaluated"` or `"unavailable"`: Display *"Camera distance is unknown or not evaluated; spatial feasibility was not evaluated."*
+   - If `spatial_check_status == "passed"` or `"measured"`: Display measured camera separation in meters with the note: *"Camera separation is not animal travel distance; biological movement feasibility is not validated."*
+3. **Overlapping vs Disjoint Intervals:** Clearly distinguish overlapping intervals (simultaneous recorded sightings, no travel order) from disjoint intervals (earlier vs later encounter). Do not draw directional arrows for overlapping intervals.
+4. **All Plausible Candidates:** Present all candidate associations for a given encounter without artificially picking a single "best match".
+
+---
+
 ## 5. Caltech Camera Traps Real Dataset Integration
 
 ### 5.1 Sandbox Blocker Details
@@ -224,23 +304,23 @@ python -m pytest tests/test_phase2_analytics.py::TestCaltechRealDatasetIntegrati
 ## 6. Runnable Verification Commands
 
 ```powershell
-# 1. Run complete test suite (150 tests)
+# 1. Run complete test suite (203 tests)
 python -m pytest tests/ -v
 
-# 2. Run Phase 3 ranking test suite specifically
-python -m pytest tests/test_phase3_ranking.py -v
+# 2. Run Phase 4 association test suite specifically
+python -m pytest tests/test_phase4_associations.py -v
 
 # 3. Regenerate all JSON Schemas in schemas/
-python wildscope_analytics/schema_generator.py
+python -m wildscope_analytics.schema_generator
 
-# 4. Verify rank_review() in interactive Python
+# 4. Verify find_cross_camera_associations() in interactive Python
 python -c "
-from wildscope_analytics import Snapshot, load_and_validate_snapshot, rank_review, ReviewRankingRequest, AnalysisMetric
+from wildscope_analytics import Snapshot, load_and_validate_snapshot, analyze, CrossCameraAssociationRequest
 snap, _ = load_and_validate_snapshot('examples/valid_snapshot.json')
-req = ReviewRankingRequest(target_metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS, target_species_id='panthera_tigris')
-resp = rank_review(snap, req)
+req = CrossCameraAssociationRequest()
+resp = analyze(snap, req)
 print('Status:', resp.status)
-print('Ranked candidates:', resp.result['ranked_candidates_count'])
+print('Matching pairs:', resp.result['total_matching_pairs_found'])
 "
 ```
 
@@ -249,15 +329,22 @@ print('Ranked candidates:', resp.result['ranked_candidates_count'])
 ## 7. Complete Artifact & Schema Inventory
 
 ### Schemas Generated (`schemas/`):
-- `snapshot.schema.json` (Schema v1.2.0)
+- `snapshot.schema.json` (Schema v1.3.0)
 - `analysis_request.schema.json`
-- `analysis_response.schema.json`
+- `cross_camera_association_request.schema.json`
 - `review_ranking_request.schema.json`
-- `review_ranking_result.schema.json`
+- `analysis_response.schema.json`
+- `cross_camera_associations_result.schema.json`
 - `dataset_reference_annotation.schema.json`
+- `review_ranking_result.schema.json`
 
 ### Code Modules:
 - `wildscope_analytics/contracts/`: Data contracts, Pydantic models, request/response models.
+- `wildscope_analytics/analytics.py`: Effective-label resolver, encounter capability dispatcher, 8 activity metrics.
+- `wildscope_analytics/ranking.py`: Conclusion-sensitive review ranking engine (Feature F18).
+- `wildscope_analytics/associations.py`: Cross-camera observation correlation engine (Feature F06).
+- `wildscope_analytics/caltech_adapter.py`: Ground-truth dataset importer.
+- `wildscope_analytics/validation.py`: Snapshot referential integrity and schema validator.
 - `wildscope_analytics/analytics.py`: Effective-label resolver, encounter capability dispatcher, 8 activity metrics.
 - `wildscope_analytics/ranking.py`: Conclusion-sensitive review ranking engine (isolated counterfactual simulation, encounter deduplication, dynamic explanations).
 - `wildscope_analytics/caltech_adapter.py`: Ground-truth dataset importer.

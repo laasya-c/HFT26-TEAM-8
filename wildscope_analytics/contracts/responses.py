@@ -164,3 +164,88 @@ class ReviewRankingResult(BaseContractModel):
         ),
         description="Operational context for reviewers."
     )
+
+
+class CrossCameraAssociationPair(BaseContractModel):
+    """
+    Typed record for a single correlated encounter pair across different cameras (Feature F06).
+    """
+    association_id: str = Field(..., description="Deterministic stable pair identifier, e.g. 'assoc:enc_1::enc_2'.")
+    encounter_id_a: str = Field(..., description="Identifier of the first encounter in the pair.")
+    encounter_id_b: str = Field(..., description="Identifier of the second encounter in the pair.")
+    camera_id_a: str = Field(..., description="Physical camera ID for encounter A.")
+    camera_id_b: str = Field(..., description="Physical camera ID for encounter B.")
+    shared_taxa: list[str] = Field(..., description="Eligible species present in both encounters.")
+    observation_ids_a: list[str] = Field(default_factory=list, description="Source observation IDs for encounter A.")
+    observation_ids_b: list[str] = Field(default_factory=list, description="Source observation IDs for encounter B.")
+    detection_ids_a: list[str] = Field(default_factory=list, description="Source detection IDs for encounter A.")
+    detection_ids_b: list[str] = Field(default_factory=list, description="Source detection IDs for encounter B.")
+    effective_labels_provenance: dict[str, str] = Field(
+        default_factory=dict,
+        description="Effective label resolution and provenance per detection ID."
+    )
+    start_time_a: str = Field(..., description="ISO 8601 start timestamp for encounter A.")
+    end_time_a: str = Field(..., description="ISO 8601 end timestamp for encounter A.")
+    start_time_b: str = Field(..., description="ISO 8601 start timestamp for encounter B.")
+    end_time_b: str = Field(..., description="ISO 8601 end timestamp for encounter B.")
+    nominal_gap_seconds: float = Field(..., description="Nominal temporal gap in seconds between encounter intervals.")
+    effective_gap_seconds: float = Field(..., description="Conservative temporal gap in seconds accounting for clock uncertainty.")
+    temporal_relation: str = Field(..., description="'overlapping' or 'disjoint'.")
+    observed_interval_order: str = Field(..., description="'overlapping', 'A_before_B', or 'B_before_A'.")
+    spatial_check_status: str = Field(
+        ...,
+        description="'not_evaluated', 'unavailable', 'passed', 'failed', or 'measured'."
+    )
+    camera_distance_meters: float | None = Field(
+        default=None,
+        description="Geodesic distance between cameras in meters if coordinates exist and are evaluated."
+    )
+    spatial_units: str | None = Field(
+        default=None,
+        description="'meters' if camera distance was calculated, otherwise None."
+    )
+    rule_outcomes: dict[str, bool] = Field(
+        ...,
+        description="Evaluated boolean outcomes for individual association rules."
+    )
+    disclaimer: str = Field(
+        default="Possible association only; individual animal identity and movement are not established.",
+        description="Mandatory scientific disclaimer."
+    )
+    spatial_note: str = Field(
+        ...,
+        description="Explicit note detailing spatial evaluation status and limitations."
+    )
+    explanation: str = Field(
+        ...,
+        description="Deterministic plain-language explanation of the association."
+    )
+
+
+class CrossCameraAssociationsResult(BaseContractModel):
+    """Complete typed payload for cross-camera observation correlation (Feature F06)."""
+    data_source_mode: str = Field(..., description="Snapshot data source mode.")
+    rule_version: str = Field(default="cross_camera_association_v1", description="Association rule engine version.")
+    clock_comparability_policy: str = Field(..., description="Policy used for inter-camera clock comparisons.")
+    clock_uncertainty_seconds: float = Field(default=0.0, description="Clock uncertainty propagated in seconds.")
+    spatial_mode: str = Field(..., description="Spatial mode used during evaluation.")
+    temporal_threshold_seconds: float = Field(..., description="Maximum allowable temporal gap in seconds.")
+    spatial_threshold_meters: float | None = Field(default=None, description="Maximum allowable camera distance in meters if set.")
+    total_eligible_encounters: int = Field(..., description="Total encounters meeting scope and species criteria.")
+    total_candidate_pairs_evaluated: int = Field(..., description="Total candidate pairs evaluated.")
+    total_matching_pairs_found: int = Field(..., description="Total matching pairs satisfying all rules.")
+    returned_pairs_count: int = Field(..., description="Count of association pairs returned.")
+    is_coverage_complete: bool = Field(default=True, description="Whether pair evaluation was exhaustive or bounded.")
+    evaluation_policy: str = Field(default="all_eligible", description="Candidate pair evaluation policy.")
+    associations: list[CrossCameraAssociationPair] = Field(default_factory=list, description="Correlated encounter pairs.")
+    disclaimer: str = Field(
+        default=(
+            "Possible association only; individual animal identity and movement are not established. "
+            "Same-species sightings close in time can be coincidental."
+        ),
+        description="Mandatory scientific limitation."
+    )
+    spatial_disclaimer: str = Field(
+        default="Camera separation is not animal travel distance; biological movement feasibility is not validated.",
+        description="Spatial measurement limitation."
+    )

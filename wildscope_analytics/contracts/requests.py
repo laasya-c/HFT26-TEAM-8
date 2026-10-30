@@ -8,12 +8,18 @@ Enforces explicit supported values and validates temporal filters and revisions.
 
 from __future__ import annotations
 from datetime import datetime
+import math
 from typing import Any
 
 from pydantic import Field, field_validator, model_validator
 
 from wildscope_analytics.contracts.entities import BaseContractModel
-from wildscope_analytics.contracts.enums import AnalysisMetric, InclusionPolicy
+from wildscope_analytics.contracts.enums import (
+    AnalysisMetric,
+    ClockComparabilityPolicy,
+    InclusionPolicy,
+    SpatialMode,
+)
 
 
 class AnalysisRequest(BaseContractModel):
@@ -230,4 +236,154 @@ class ReviewRankingRequest(BaseContractModel):
             self.result_limit = self.max_records_to_rank
         elif self.result_limit is not None and self.max_records_to_rank is None:
             self.max_records_to_rank = self.result_limit
+        return self
+
+
+class CrossCameraAssociationRequest(BaseContractModel):
+    """
+    Phase 4 Request payload for cross-camera observation correlation (Feature F06).
+    Finds pairs of encounters from different cameras that satisfy explicit species,
+    temporal, and optional spatial rules.
+
+    CRITICAL INTERPRETATION:
+    A match means: 'Possible association between recorded sightings under the configured rules.'
+    It does NOT establish the same individual animal, confirmed movement, migration corridor,
+    travel speed, or probability of identity.
+    """
+    metric: AnalysisMetric = Field(
+        default=AnalysisMetric.CROSS_CAMERA_ASSOCIATIONS,
+        description="Selected operational metric: CROSS_CAMERA_ASSOCIATIONS."
+    )
+    species_ids: list[str] | None = Field(
+        default=None,
+        description="Optional focal species/taxa IDs to match. None evaluates all eligible species."
+    )
+    camera_ids: list[str] | None = Field(
+        default=None,
+        description="Optional set of camera IDs to include in the evaluation."
+    )
+    site_ids: list[str] | None = Field(
+        default=None,
+        description="Optional set of site IDs to include."
+    )
+    start_time: datetime | None = Field(
+        default=None,
+        description="Start of analysis time window (must be timezone-aware)."
+    )
+    end_time: datetime | None = Field(
+        default=None,
+        description="End of analysis time window (must be timezone-aware)."
+    )
+    analysis_timezone: str | None = Field(
+        default=None,
+        description="IANA timezone identifier for reporting and interval localization."
+    )
+    max_temporal_separation_seconds: float = Field(
+        default=3600.0,
+        ge=0.0,
+        description=(
+            "Maximum allowable temporal separation in seconds between encounter intervals (default: 3600.0s = 1.0h). "
+            "Encounters with gap <= max_temporal_separation_seconds satisfy the temporal rule. "
+            "Notice: this is an unvalidated configurable heuristic, not a proven biological or travel threshold."
+        )
+    )
+    clock_comparability_policy: ClockComparabilityPolicy = Field(
+        default=ClockComparabilityPolicy.ANALYST_ASSUMPTION,
+        description=(
+            "Policy declaring the basis for comparing timestamps across different physical cameras. "
+            "Options: documented_sync, analyst_assumption, offsets_known, unknown. "
+            "When 'unknown', time-based association returns INSUFFICIENT_DATA because inter-camera clock alignment is unverified."
+        )
+    )
+    clock_uncertainty_seconds: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "Total clock-offset uncertainty in seconds between cameras (default: 0.0s). "
+            "Propagated conservatively: effective_gap = max(0, nominal_gap - clock_uncertainty_seconds)."
+        )
+    )
+    spatial_mode: SpatialMode = Field(
+        default=SpatialMode.TIME_SPECIES_ONLY,
+        description=(
+            "Spatial rule evaluation mode: "
+            "1) time_species_only: do not require coordinates, spatial_check_status='not_evaluated'. "
+            "2) spatial_when_available: apply distance checks when coordinates exist; mark others 'unavailable'. "
+            "3) spatial_required: evaluate only pairs with valid coordinates; if none exist, returns UNAVAILABLE."
+        )
+    )
+    max_spatial_distance_meters: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Optional maximum distance threshold in meters between camera traps. "
+            "When configured, pairs with geodesic distance > threshold are excluded."
+        )
+    )
+    inclusion_policy: InclusionPolicy = Field(
+        default=InclusionPolicy.PROVISIONAL_AND_REVIEWED,
+        description="Policy governing which detections within encounters are admitted."
+    )
+    min_confidence: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Minimum detection/classification confidence cutoff."
+    )
+    result_limit: int | None = Field(
+        default=50,
+        ge=1,
+        le=1000,
+        description="Maximum number of top-ranked associations to return (default: 50). Does NOT mark response partial."
+    )
+    evaluation_limit: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Optional upper bound on candidate pairs evaluated during simulation. "
+            "When applied, bounds evaluation work, marks coverage incomplete, and sets status to PARTIAL."
+        )
+    )
+    evaluation_policy: str = Field(
+        default="all_eligible",
+        description="Policy governing pair candidate selection when evaluation_limit is set."
+    )
+    expected_revision: int | None = Field(
+        default=None,
+        ge=0,
+        description="Expected dataset revision for optimistic concurrency."
+    )
+    parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Optional additional parameters."
+    )
+
+    @field_validator("start_time")
+    @classmethod
+    def validate_assoc_start_tz(cls, v: datetime | None) -> datetime | None:
+        if v is not None and (v.tzinfo is None or v.tzinfo.utcoffset(v) is None):
+            raise ValueError("start_time must be timezone-aware if provided.")
+        return v
+
+    @field_validator("end_time")
+    @classmethod
+    def validate_assoc_end_tz(cls, v: datetime | None) -> datetime | None:
+        if v is not None and (v.tzinfo is None or v.tzinfo.utcoffset(v) is None):
+            raise ValueError("end_time must be timezone-aware if provided.")
+        return v
+
+    @model_validator(mode="after")
+    def validate_assoc_parameters(self) -> CrossCameraAssociationRequest:
+        if self.start_time is not None and self.end_time is not None:
+            if self.start_time > self.end_time:
+                raise ValueError(
+                    f"start_time ({self.start_time}) cannot be later than end_time ({self.end_time})."
+                )
+        if not math.isfinite(self.max_temporal_separation_seconds):
+            raise ValueError("max_temporal_separation_seconds must be a finite non-negative number.")
+        if not math.isfinite(self.clock_uncertainty_seconds):
+            raise ValueError("clock_uncertainty_seconds must be a finite non-negative number.")
+        if self.max_spatial_distance_meters is not None:
+            if not math.isfinite(self.max_spatial_distance_meters):
+                raise ValueError("max_spatial_distance_meters must be a finite non-negative number.")
         return self

@@ -18,6 +18,10 @@ from wildscope_analytics.contracts import (
     BaseContractModel,
     CalibrationStatus,
     Camera,
+    ClockComparabilityPolicy,
+    CrossCameraAssociationPair,
+    CrossCameraAssociationRequest,
+    CrossCameraAssociationsResult,
     CURRENT_SCHEMA_VERSION,
     DatasetReferenceAnnotation,
     DataSourceMode,
@@ -43,10 +47,13 @@ from wildscope_analytics.contracts import (
     ScoreType,
     Snapshot,
     SnapshotMetadata,
+    SpatialCheckStatus,
     SpatialContext,
+    SpatialMode,
     SpatialZone,
     SUPPORTED_SCHEMA_VERSIONS,
     TaxonAlternative,
+    TemporalRelation,
     TimeInterval,
     TriageState,
     ValidationErrorDetail,
@@ -59,12 +66,8 @@ from wildscope_analytics.validation import (
     validate_review_ranking_request,
     validate_snapshot_data,
 )
-from wildscope_analytics.analytics import analyze
-from wildscope_analytics.analytics import rank_review
-
-
-from wildscope_analytics.analytics import analyze
-from wildscope_analytics.analytics import rank_review
+from wildscope_analytics.analytics import analyze, find_cross_camera_associations, rank_review
+from wildscope_analytics.associations import haversine_distance_meters
 
 
 __all__ = [
@@ -75,6 +78,10 @@ __all__ = [
     "BaseContractModel",
     "CalibrationStatus",
     "Camera",
+    "ClockComparabilityPolicy",
+    "CrossCameraAssociationPair",
+    "CrossCameraAssociationRequest",
+    "CrossCameraAssociationsResult",
     "CURRENT_SCHEMA_VERSION",
     "DatasetReferenceAnnotation",
     "DataSourceMode",
@@ -100,16 +107,21 @@ __all__ = [
     "ScoreType",
     "Snapshot",
     "SnapshotMetadata",
+    "SpatialCheckStatus",
     "SpatialContext",
+    "SpatialMode",
     "SpatialZone",
     "SUPPORTED_SCHEMA_VERSIONS",
     "TaxonAlternative",
+    "TemporalRelation",
     "TimeInterval",
     "TriageState",
     "ValidationErrorDetail",
     "ValidationErrorCode",
     "ValidationReport",
     "analyze",
+    "find_cross_camera_associations",
+    "haversine_distance_meters",
     "load_and_validate_snapshot",
     "rank_review",
     "validate_analysis_request",

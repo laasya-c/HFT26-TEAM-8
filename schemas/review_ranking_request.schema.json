@@ -11,6 +11,7 @@
         "hourly_activity",
         "species_camera_matrix",
         "effort_normalised_rates",
+        "cross_camera_associations",
         "activity_time_distribution",
         "cross_camera_association",
         "camera_activity_summary",

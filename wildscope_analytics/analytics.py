@@ -52,7 +52,11 @@ from wildscope_analytics.contracts.enums import (
     TriageState,
     ValidationErrorCode,
 )
-from wildscope_analytics.contracts.requests import AnalysisRequest, ReviewRankingRequest
+from wildscope_analytics.contracts.requests import (
+    AnalysisRequest,
+    CrossCameraAssociationRequest,
+    ReviewRankingRequest,
+)
 from wildscope_analytics.contracts.responses import AnalysisResponseEnvelope, ValidationErrorDetail
 from wildscope_analytics.contracts.snapshot import CURRENT_SCHEMA_VERSION, Snapshot
 from wildscope_analytics.validation import validate_snapshot_data
@@ -1609,7 +1613,7 @@ def compute_effort_normalised_rates(
 
 _LEGACY_METRIC_MAP: dict[str, AnalysisMetric] = {
     AnalysisMetric.ACTIVITY_TIME_DISTRIBUTION.value: AnalysisMetric.HOURLY_ACTIVITY,
-    AnalysisMetric.CROSS_CAMERA_ASSOCIATION.value: AnalysisMetric.CAMERA_COMPARISON,
+    AnalysisMetric.CROSS_CAMERA_ASSOCIATION.value: AnalysisMetric.CROSS_CAMERA_ASSOCIATIONS,
     AnalysisMetric.CAMERA_ACTIVITY_SUMMARY.value: AnalysisMetric.OVERVIEW,
     AnalysisMetric.MONITORING_COVERAGE_SUMMARY.value: AnalysisMetric.EFFORT_NORMALISED_RATES,
 }
@@ -1617,28 +1621,24 @@ _LEGACY_METRIC_MAP: dict[str, AnalysisMetric] = {
 
 def analyze(
     snapshot: Snapshot,
-    request: AnalysisRequest,
+    request: AnalysisRequest | CrossCameraAssociationRequest,
 ) -> AnalysisResponseEnvelope:
     """
-    Phase 2 analyze() entry point.
-
+    Main analytical entry point for WILDSCOPE (Phase 2 & Phase 4).
     Validates the snapshot, resolves effective labels, applies filters,
     and dispatches to the requested metric computation.
 
     Supported metrics:
-      overview, species_encounter_counts, camera_comparison,
-      daily_activity, hourly_activity, species_camera_matrix,
-      effort_normalised_rates
-
-    Legacy Phase 1 metric names are mapped:
-      activity_time_distribution  → hourly_activity
-      cross_camera_association    → camera_comparison
-      camera_activity_summary     → overview
-      monitoring_coverage_summary → effort_normalised_rates
+      overview, species_encounter_counts, reference_image_species_counts,
+      camera_comparison, daily_activity, hourly_activity, species_camera_matrix,
+      effort_normalised_rates, cross_camera_associations (Feature F06)
 
     Returns AnalysisResponseEnvelope with typed result payload.
-    rank_review() remains unavailable (Phase 3).
     """
+    if isinstance(request, CrossCameraAssociationRequest):
+        from wildscope_analytics.associations import compute_cross_camera_associations
+        return compute_cross_camera_associations(snapshot, request)
+
     # --- Validate snapshot
     snap_report = validate_snapshot_data(snapshot)
     if not snap_report.is_valid:
@@ -1713,6 +1713,9 @@ def analyze(
         return compute_species_camera_matrix(snapshot, request, labels, scoped_camera_ids, ctx)
     if metric == AnalysisMetric.EFFORT_NORMALISED_RATES:
         return compute_effort_normalised_rates(snapshot, request, labels, scoped_camera_ids, ctx)
+    if metric in (AnalysisMetric.CROSS_CAMERA_ASSOCIATIONS, AnalysisMetric.CROSS_CAMERA_ASSOCIATION):
+        from wildscope_analytics.associations import compute_cross_camera_associations
+        return compute_cross_camera_associations(snapshot, request)
 
     # Unimplemented metric
     return AnalysisResponseEnvelope(
@@ -1721,8 +1724,21 @@ def analyze(
         dataset_revision=snapshot.metadata.dataset_revision,
         metric=request.metric,
         applied_filters=_build_applied_filters(request),
-        limitations=[f"Metric '{request.metric.value}' is not implemented in Phase 2."],
+        limitations=[f"Metric '{request.metric.value}' is not implemented."],
     )
+
+
+def find_cross_camera_associations(
+    snapshot: Snapshot,
+    request: CrossCameraAssociationRequest | AnalysisRequest,
+) -> AnalysisResponseEnvelope:
+    """
+    Phase 4: Dedicated helper entry point for cross-camera observation correlation (Feature F06).
+    Finds pairs of encounters from different cameras that satisfy explicit species,
+    temporal, and optional spatial rules.
+    """
+    from wildscope_analytics.associations import compute_cross_camera_associations
+    return compute_cross_camera_associations(snapshot, request)
 
 
 def rank_review(

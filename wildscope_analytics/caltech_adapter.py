@@ -100,7 +100,19 @@ from wildscope_analytics.contracts.snapshot import (
 
 # Format: category_name_lower → (wildscope_taxon_id_or_None, is_animal, is_empty)
 _CCT_CATEGORY_MAP: dict[str, tuple[str | None, bool, bool]] = {
+    # Non-animal categories (explicit vehicle, person, empty)
     "empty":          (None,                    False, True),
+    "blank":          (None,                    False, True),
+    "vehicle":        (None,                    False, False),
+    "car":            (None,                    False, False),
+    "truck":          (None,                    False, False),
+    "motorcycle":     (None,                    False, False),
+    "bicycle":        (None,                    False, False),
+    "person":         (None,                    False, False),
+    "human":          (None,                    False, False),
+    "pedestrian":     (None,                    False, False),
+
+    # Animals in CCT and common camera traps
     "opossum":        ("didelphis_virginiana",   True,  False),
     "raccoon":        ("procyon_lotor",          True,  False),
     "coyote":         ("canis_latrans",          True,  False),
@@ -113,17 +125,25 @@ _CCT_CATEGORY_MAP: dict[str, tuple[str | None, bool, bool]] = {
     "skunk":          ("mephitidae_sp",          True,  False),
     "fox":            ("vulpes_sp",              True,  False),
     "mountain lion":  ("puma_concolor",          True,  False),
+    "mountain_lion":  ("puma_concolor",          True,  False),
     "dog":            ("canis_lupus_familiaris", True,  False),
     "cat":            ("felis_catus",            True,  False),
     "lizard":         ("squamata_sp",            True,  False),
     "cow":            ("bos_taurus",             True,  False),
-    "vehicle":        (None,                    False, False),
-    "person":         (None,                    False, False),
-    # Broad groups with no scientific binomial
-    "small mammal":   (None,                    True,  False),
+    "badger":         ("taxidea_taxus",          True,  False),
+    "pig":            ("sus_scrofa",             True,  False),
+    "bat":            ("chiroptera_sp",          True,  False),
     "insect":         ("insecta_sp",             True,  False),
     "snake":          ("serpentes_sp",           True,  False),
+
+    # Broad animal groups
+    "small mammal":   (None,                    True,  False),
+    "small_mammal":   (None,                    True,  False),
+    "animal":         (None,                    True,  False),
 }
+
+_NON_ANIMAL_KEYWORDS = ("car", "vehicle", "truck", "motorcycle", "bicycle", "person", "human", "pedestrian", "equipment", "debris")
+_ANIMAL_KEYWORDS = ("species", "wildlife", "animal", "mammal", "bird", "reptile", "amphibian", "insect", "fauna", "creature")
 
 
 @dataclass
@@ -158,16 +178,37 @@ class CCTImportReport:
 def _resolve_category(
     cat_name: str,
     cat_id: int,
-) -> tuple[str | None, bool, bool]:
+) -> tuple[str | None, bool, bool, list[str]]:
     """
-    Resolve (wildscope_taxon_id, is_animal, is_empty) for a CCT category.
+    Resolve (wildscope_taxon_id, is_animal, is_empty, warnings) for a CCT category.
     Preserves exact category_name as published; maps to internal identifiers separately.
+    Explicit vehicle/person categories are non-animal.
+    Unmapped wildlife remains visible as an unresolved animal taxon.
+    Unknown categories without clear indicators are flagged and not silently assumed animal.
     """
     key = cat_name.lower().strip()
     if key in _CCT_CATEGORY_MAP:
-        return _CCT_CATEGORY_MAP[key]
-    # Unknown category: treat as potential animal, no taxon mapping
-    return (None, True, False)
+        taxon, is_anim, is_emp = _CCT_CATEGORY_MAP[key]
+        return taxon, is_anim, is_emp, []
+
+    # Check non-animal keywords (car, vehicle, person, etc.)
+    if any(kw in key for kw in _NON_ANIMAL_KEYWORDS):
+        return None, False, False, []
+
+    # Check empty keywords
+    if "empty" in key or "blank" in key:
+        return None, False, True, []
+
+    # Check animal keywords
+    if any(kw in key for kw in _ANIMAL_KEYWORDS):
+        return None, True, False, []
+
+    # Truly unknown category: do not silently classify as animal
+    warn = (
+        f"Category '{cat_id}:{cat_name}' is not in known mapping; "
+        "cannot silently assume animal classification. Preserving as unclassified non-animal."
+    )
+    return None, False, False, [warn]
 
 
 def _parse_cct_timestamp(
@@ -326,7 +367,9 @@ def import_caltech_snapshot(
     for cat in cct_data.get("categories", []):
         cat_id = int(cat["id"])
         cat_name = str(cat.get("name", f"category_{cat_id}"))
-        taxon_id, is_animal, is_empty = _resolve_category(cat_name, cat_id)
+        taxon_id, is_animal, is_empty, cat_warns = _resolve_category(cat_name, cat_id)
+        if cat_warns:
+            import_warnings.extend(cat_warns)
         categories[cat_id] = {
             "id": cat_id,
             "name": cat_name,

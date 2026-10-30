@@ -38,8 +38,8 @@ from wildscope_analytics.contracts.enums import (
     ReviewOrderingMechanism,
 )
 
-CURRENT_SCHEMA_VERSION = "1.2.0"
-SUPPORTED_SCHEMA_VERSIONS = {"1.0.0", "1.1.0", "1.2.0"}
+CURRENT_SCHEMA_VERSION = "1.3.0"
+SUPPORTED_SCHEMA_VERSIONS = {"1.0.0", "1.1.0", "1.2.0", "1.3.0"}
 
 
 class SnapshotMetadata(BaseContractModel):
