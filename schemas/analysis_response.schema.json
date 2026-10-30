@@ -1,0 +1,230 @@
+{
+  "$defs": {
+    "AnalysisMetric": {
+      "description": "Operations supported by the decision intelligence module.\nRejects arbitrary or unsupported queries.",
+      "enum": [
+        "species_encounter_counts",
+        "activity_time_distribution",
+        "cross_camera_association",
+        "camera_activity_summary",
+        "monitoring_coverage_summary"
+      ],
+      "title": "AnalysisMetric",
+      "type": "string"
+    },
+    "ResponseStatus": {
+      "description": "Status of an analytical or review-ranking response envelope.\nClear semantics distinguish missing data from missing capabilities.",
+      "enum": [
+        "ok",
+        "partial",
+        "insufficient_data",
+        "unavailable",
+        "invalid_request"
+      ],
+      "title": "ResponseStatus",
+      "type": "string"
+    },
+    "ValidationErrorCode": {
+      "description": "Stable error codes for contract and snapshot validation failures.",
+      "enum": [
+        "DUPLICATE_ID",
+        "BROKEN_REFERENCE",
+        "INVALID_CONFIDENCE",
+        "INVALID_COORDINATES",
+        "TEMPORAL_ORDER_VIOLATION",
+        "MISSING_TIMEZONE",
+        "OVERLAPPING_EFFORT",
+        "INVALID_BBOX",
+        "INVALID_REVIEW_PAYLOAD",
+        "ENCOUNTER_MEMBERSHIP_VIOLATION",
+        "UNSUPPORTED_SCHEMA_VERSION",
+        "UNSUPPORTED_OPERATION",
+        "SCHEMA_VIOLATION"
+      ],
+      "title": "ValidationErrorCode",
+      "type": "string"
+    },
+    "ValidationErrorDetail": {
+      "additionalProperties": false,
+      "description": "Structured detail for a contract or data validation error.",
+      "properties": {
+        "code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValidationErrorCode"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Stable machine-readable error code.",
+          "title": "Code"
+        },
+        "message": {
+          "description": "Human-readable explanation of error.",
+          "title": "Message",
+          "type": "string"
+        },
+        "field_path": {
+          "description": "Path to violating field in dot/bracket notation, e.g. 'detections[2].classification_confidence'.",
+          "title": "Field Path",
+          "type": "string"
+        },
+        "entity_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Entity type involved, e.g. 'Detection'.",
+          "title": "Entity Type"
+        },
+        "entity_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Identifier of entity if known.",
+          "title": "Entity Id"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "field_path"
+      ],
+      "title": "ValidationErrorDetail",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Standard envelope enclosing all analytical and review ranking outcomes.\n\nStatus semantics:\n- OK: Computation completed cleanly against sufficient validated data.\n- PARTIAL: Usable result produced, but some records were excluded due to quality/missing fields.\n- INSUFFICIENT_DATA: Relevant inputs exist, but their quantity/quality is inadequate (e.g. no effort records).\n- UNAVAILABLE: Required capability or prerequisite is absent (e.g. unconfigured model, missing telemetry).\n- INVALID_REQUEST: Request parameters failed validation or revision mismatch occurred.",
+  "properties": {
+    "status": {
+      "$ref": "#/$defs/ResponseStatus",
+      "description": "Operational status of the response."
+    },
+    "schema_version": {
+      "default": "1.0.0",
+      "description": "Schema contract version.",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "dataset_revision": {
+      "description": "Data revision of the source snapshot used for computation.",
+      "minimum": 0,
+      "title": "Dataset Revision",
+      "type": "integer"
+    },
+    "metric": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AnalysisMetric"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Metric evaluated in this response."
+    },
+    "applied_filters": {
+      "additionalProperties": true,
+      "description": "Echo of filters applied during computation.",
+      "title": "Applied Filters",
+      "type": "object"
+    },
+    "result": {
+      "anyOf": [
+        {},
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Typed analytical payload, or None when unavailable/insufficient.",
+      "title": "Result"
+    },
+    "metric_units": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Units of measurement (e.g. 'encounters/camera-day', 'count').",
+      "title": "Metric Units"
+    },
+    "evidence_references": {
+      "description": "Audit references to source entity IDs (camera, media, observation, encounter, review).",
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence References",
+      "type": "array"
+    },
+    "excluded_records_count": {
+      "default": 0,
+      "description": "Count of records excluded during calculation.",
+      "minimum": 0,
+      "title": "Excluded Records Count",
+      "type": "integer"
+    },
+    "exclusion_reasons": {
+      "description": "Documented reasons for record exclusions.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Exclusion Reasons",
+      "type": "array"
+    },
+    "warnings": {
+      "description": "Advisory warnings encountered during processing.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    },
+    "limitations": {
+      "description": "Explicit methodological or data limitations.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "errors": {
+      "description": "Structured error details if status is INVALID_REQUEST or validation failed.",
+      "items": {
+        "$ref": "#/$defs/ValidationErrorDetail"
+      },
+      "title": "Errors",
+      "type": "array"
+    }
+  },
+  "required": [
+    "status",
+    "dataset_revision"
+  ],
+  "title": "AnalysisResponseEnvelope",
+  "type": "object"
+}

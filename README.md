@@ -1,6 +1,6 @@
-# 🚀 CBIT Hacktoberfest '26 — Project Starter Repository
+# 🚀 CBIT Hacktoberfest '26 — Project Repository
 
-> **Official Public Starter Repository for CBIT Hacktoberfest '26**  
+> **Official Public Repository for CBIT Hacktoberfest '26**  
 > *Chaitanya Bharathi Institute of Technology (CBIT), Hyderabad*
 
 ---
@@ -12,77 +12,148 @@
 | **Team Name** | **ByteStrom** |
 | **Team Number** | `TEAM-8` (`HFT26-TEAM-8`) |
 | **Registration ID** | `HFEST26-475WHN3H` |
-| **Problem Track** | **Track Selection in Progress** |
-| **Domain** | `General Track` |
+| **Problem Track** | **WILDSCOPE — AI-Powered Wildlife Intelligence & Camera-Trap Monitoring System** |
+| **Domain** | `General Track / Environmental AI & Analytics` |
 | **Team Leader** | Harsh Rao (dharshrao27@gmail.com) |
 | **Institution** | Keshav Memorial Institute of Technology |
 
-### 👥 Team Members
+### 👥 Team Members & Responsibilities
 
-| # | Name | Email | Institution |
+| # | Name | Email | Role & Module Responsibilities |
 | :--- | :--- | :--- | :--- |
-| 1 | KOLACHALAMA SRI SHRAVAN | srishravank@gmail.com | Keshav Memorial Institute of Technology |
-| 2 | Santosh Yuvaraj | santoshyuvarajeshwaroju@gmail.com | Keshav Memorial Institute of Technology |
-| 3 | Laasya Priya | c.laasya27@gmail.com | Keshav Memorial Institute of Technology |
+| 1 | **Harsh Rao** (Lead) | dharshrao27@gmail.com | Vision models, animal detection, taxonomic classification, encounter grouping |
+| 2 | **Kolachalama Sri Shravan** | srishravank@gmail.com | Integration architecture, shared data contracts, validation, decision intelligence (`analyze`, `rank_review`) |
+| 3 | **Santosh Yuvaraj** | santoshyuvarajeshwaroju@gmail.com | Backend API gateway, persistent database, job queues, revision management, review audit trail |
+| 4 | **Laasya Priya** | c.laasya27@gmail.com | Interactive React frontend, map visualization, human review interface, transparent reporting |
 
 ---
 
-## 🎯 Problem Statement
+## 🎯 Problem Statement: WILDSCOPE
 
-### **Track Selection in Progress**
-*Domain:* **General Track**
-
-Details regarding the chosen problem statement track and technical requirements.
+WILDSCOPE converts raw camera-trap imagery and videos into traceable, reviewable wildlife evidence. It supports researchers and conservation management teams by automating animal detection, taxonomic classification, encounter aggregation, spatio-temporal activity patterns, and conclusion-sensitive review prioritization.
 
 ---
 
-## 🛠️ Contribution & Submission Workflow
+## 📦 Phase 1: Shared Data Contracts & Validation Engine
 
-All teams must follow the official fork-and-pull-request workflow:
+**Branch:** `shravan`  
+**Implemented by:** Kolachalama Sri Shravan
 
-1. **Fork this Repository**:
-   - One team member should click the **Fork** button at the top right to fork this upstream repository to your personal/team GitHub account.
-2. **Add Collaborators**:
-   - In your forked repository, navigate to **Settings > Collaborators** and invite all your registered team members.
-3. **Clone & Develop Locally**:
-   ```bash
-   git clone https://github.com/<your-username>/HFT26-TEAM-8.git
-   cd HFT26-TEAM-8
-   git checkout -b feature/prototype
-   ```
-4. **Commit & Push Regularly**:
-   - Make atomic, descriptive commits throughout the hackathon.
-   ```bash
-   git add .
-   git commit -m "feat: implement core solution architecture"
-   git push origin feature/prototype
-   ```
-5. **Open Pull Request (PR) for Final Submission**:
-   - When ready for evaluation, open a **Pull Request** from your fork's `main` branch back to this upstream repository's `main` branch.
-   - **PR Title Format**: `[SUBMISSION] TEAM-8 - ByteStrom - Track Selection in Progress`
-   - **PR Description Checklist**:
-     - 📌 Solution Overview & Approach
-     - 🏗️ Architecture & Tech Stack Details
-     - 🚀 Local Setup & Installation Instructions
-     - 🎥 Demo Video Link / Live Deployment URL
-     - 📸 Key Screenshots & Visuals
+Phase 1 establishes the strongly-typed contracts, validation engine, JSON schemas, and response envelopes that guarantee data integrity across all four team modules before analytical algorithms run.
+
+### 🌟 Key Capabilities Implemented
+1. **Pydantic v2 Contracts:** Models for `Camera`, `MediaAsset`, `Observation`, `Detection`, `NormalizedBBox`, `Encounter`, `ReviewEvent`, `MonitoringEffort`, and `SpatialContext`.
+2. **Deep Relational Validation (`validation.py`):**
+   - Unique entity IDs across all collections.
+   - Foreign-key referential integrity (cameras, media, observations, detections, encounters, reviews, efforts).
+   - Strict encounter membership: all member observations and detections must belong to the encounter's camera.
+   - Non-overlapping monitoring effort intervals per camera trap.
+   - Coordinate range validation (`[-90, 90]`, `[-180, 180]`) and mandatory paired presence.
+   - Timezone-aware timestamps for known times.
+   - Separation of detection confidence from classification confidence.
+   - Review consistency rules (corrected species requires replacement taxon, rejected detection forbids taxon).
+3. **Transparent Response Envelopes (`AnalysisResponseEnvelope`):**
+   - 5 distinct operational statuses: `ok`, `partial`, `insufficient_data`, `unavailable`, `invalid_request`.
+   - Never fabricates fake operational metrics or returns fake zeroes for missing data.
+   - Citations to supporting evidence IDs (`evidence_references`).
+4. **JSON Schema Automation (`schema_generator.py`):**
+   - Generates machine-readable JSON Schema files for backend (FastAPI) and frontend (TypeScript) synchronization.
 
 ---
 
-## 📁 Recommended Project Structure
+## 🚀 Quick Start & Installation
 
-```
-.
-├── src/                  # Source code (Frontend / Backend / ML)
-├── docs/                 # Documentation, architecture diagrams, slides
-├── tests/                # Test suites & verification scripts
-├── README.md             # Your project documentation & presentation
-└── LICENSE               # Open-source license (MIT recommended)
+```bash
+# 1. Clone repository and switch to Shravan's branch
+git clone https://github.com/<your-username>/HFT26-TEAM-8.git
+cd HFT26-TEAM-8
+git checkout shravan
+
+# 2. Install package in editable mode
+pip install -e .
+
+# 3. Run validation test suite
+pytest -v
 ```
 
+### 🔬 Generating JSON Schemas
+
+```bash
+python wildscope_analytics/schema_generator.py
+```
+Exports schemas to `schemas/`:
+- `schemas/snapshot.schema.json`
+- `schemas/analysis_request.schema.json`
+- `schemas/review_ranking_request.schema.json`
+- `schemas/analysis_response.schema.json`
+
+### 💻 Python Usage Example
+
+```python
+from wildscope_analytics import (
+    load_and_validate_snapshot,
+    AnalysisRequest,
+    AnalysisMetric,
+    analyze,
+)
+
+# 1. Load and validate point-in-time snapshot
+snapshot, report = load_and_validate_snapshot("examples/valid_snapshot.json")
+
+if report.is_valid:
+    print(f"Snapshot valid! Revision: {report.dataset_revision}")
+    for warning in report.warnings:
+        print(f"Advisory: {warning}")
+
+    # 2. Construct analytical request
+    request = AnalysisRequest(
+        metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
+        species_ids=["panthera_tigris"],
+        expected_revision=report.dataset_revision,
+    )
+
+    # 3. Execute entry point
+    response = analyze(snapshot, request)
+    print(f"Response status: {response.status}")
+    print(f"Limitations: {response.limitations}")
+else:
+    print("Snapshot validation failed:")
+    for err in report.errors:
+        print(f"[{err.code}] {err.field_path}: {err.message}")
+```
+
 ---
 
-## ⚠️ Important Rules & Code of Conduct
-* **Upstream Protection**: Do not push directly to this repository's main branch. All evaluation will be conducted on your submitted Pull Request.
-* **Original Work**: All code submitted must be developed during the hackathon timeline. Open-source libraries and frameworks are welcomed with proper attribution.
-* **Code Freeze**: Final Pull Requests must be submitted before the designated hackathon submission deadline.
+## 📁 Repository Structure
+
+```
+HFT26-TEAM-8/
+├── wildscope_analytics/          # Core analytics & contract package
+│   ├── __init__.py               # Entry points (analyze, rank_review, load_and_validate_snapshot)
+│   ├── contracts/
+│   │   ├── __init__.py           # Contract exports
+│   │   ├── enums.py              # TriageState, ScoreType, ReviewDecision, ResponseStatus, AnalysisMetric
+│   │   ├── entities.py           # Camera, Detection, NormalizedBBox, Encounter, ReviewEvent, etc.
+│   │   ├── snapshot.py           # Snapshot and SnapshotMetadata contracts
+│   │   ├── requests.py           # AnalysisRequest, ReviewRankingRequest
+│   │   └── responses.py          # AnalysisResponseEnvelope, ValidationErrorDetail
+│   ├── validation.py             # Validation engine, uniqueness, referential integrity
+│   └── schema_generator.py       # Pydantic JSON Schema export script
+├── schemas/                      # Generated JSON Schemas for team synchronization
+│   ├── snapshot.schema.json
+│   ├── analysis_request.schema.json
+│   ├── review_ranking_request.schema.json
+│   └── analysis_response.schema.json
+├── examples/                     # Synthetic test fixtures
+│   ├── valid_snapshot.json       # Complete valid synthetic fixture
+│   ├── minimal_snapshot.json     # Minimal valid fixture
+│   └── invalid_snapshot.json     # Intentionally invalid fixture for error demonstration
+├── tests/                        # Comprehensive test suites (38 passing tests)
+│   ├── test_contracts.py         # Entity constraints, bounds, round-trip serialization
+│   └── test_validation.py        # Relational integrity, uniqueness, entry points
+├── docs/                         # Technical specifications & team handoff
+│   ├── phase1_contract.md        # Complete contract definitions and field matrix
+│   └── team_handoff.md           # Handoff guide for Harsh, Santosh, and Laasya
+├── pyproject.toml                # Project packaging configuration
+└── README.md                     # Project overview and setup guide
+```

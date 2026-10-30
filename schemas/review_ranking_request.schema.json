@@ -1,0 +1,114 @@
+{
+  "$defs": {
+    "AnalysisMetric": {
+      "description": "Operations supported by the decision intelligence module.\nRejects arbitrary or unsupported queries.",
+      "enum": [
+        "species_encounter_counts",
+        "activity_time_distribution",
+        "cross_camera_association",
+        "camera_activity_summary",
+        "monitoring_coverage_summary"
+      ],
+      "title": "AnalysisMetric",
+      "type": "string"
+    },
+    "InclusionPolicy": {
+      "description": "Policy governing which detections are admitted into analytical aggregations.",
+      "enum": [
+        "reviewed_only",
+        "provisional_and_reviewed",
+        "all_detections"
+      ],
+      "title": "InclusionPolicy",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Request payload for conclusion-sensitive review prioritization.\nRanks unreviewed detections by their potential marginal impact on a selected metric.",
+  "properties": {
+    "target_metric": {
+      "$ref": "#/$defs/AnalysisMetric",
+      "description": "Operational metric whose sensitivity guides review priority."
+    },
+    "species_ids": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Scope review ranking to particular species hypotheses.",
+      "title": "Species Ids"
+    },
+    "camera_ids": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Scope review ranking to particular camera traps.",
+      "title": "Camera Ids"
+    },
+    "inclusion_policy": {
+      "$ref": "#/$defs/InclusionPolicy",
+      "default": "provisional_and_reviewed",
+      "description": "Inclusion baseline for computing marginal delta."
+    },
+    "top_k_candidates": {
+      "default": 3,
+      "description": "Number of alternative label candidates evaluated per detection.",
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Top K Candidates",
+      "type": "integer"
+    },
+    "score_margin_threshold": {
+      "default": 0.25,
+      "description": "Ambiguity margin threshold between top predictions triggering review.",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Score Margin Threshold",
+      "type": "number"
+    },
+    "max_records_to_rank": {
+      "default": 50,
+      "description": "Maximum prioritized records returned in response.",
+      "maximum": 500,
+      "minimum": 1,
+      "title": "Max Records To Rank",
+      "type": "integer"
+    },
+    "expected_revision": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Expected dataset revision for consistency.",
+      "title": "Expected Revision"
+    }
+  },
+  "required": [
+    "target_metric"
+  ],
+  "title": "ReviewRankingRequest",
+  "type": "object"
+}
