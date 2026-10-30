@@ -34,6 +34,7 @@ from wildscope_analytics.contracts.enums import (
     AnnotationSource,
     CalibrationStatus,
     DataSourceMode,
+    EncounterProcessingStatus,
     InclusionPolicy,
     MediaType,
     PredictionStatus,
@@ -47,6 +48,9 @@ from wildscope_analytics.contracts.enums import (
 from wildscope_analytics.contracts.requests import AnalysisRequest, ReviewRankingRequest
 from wildscope_analytics.contracts.responses import (
     AnalysisResponseEnvelope,
+    EvaluatedAlternative,
+    RankedCandidateResult,
+    ReviewRankingResult,
     ValidationErrorDetail,
 )
 from wildscope_analytics.contracts.snapshot import (
@@ -69,6 +73,8 @@ __all__ = [
     "DataSourceMode",
     "Detection",
     "Encounter",
+    "EncounterProcessingStatus",
+    "EvaluatedAlternative",
     "InclusionPolicy",
     "MediaAsset",
     "MediaType",
@@ -77,11 +83,13 @@ __all__ = [
     "Observation",
     "PredictionRun",
     "PredictionStatus",
+    "RankedCandidateResult",
     "ResponseStatus",
     "ReviewDecision",
     "ReviewEvent",
     "ReviewOrderingMechanism",
     "ReviewRankingRequest",
+    "ReviewRankingResult",
     "ScoreType",
     "Snapshot",
     "SnapshotMetadata",

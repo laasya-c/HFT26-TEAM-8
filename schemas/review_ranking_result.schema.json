@@ -1,0 +1,279 @@
+{
+  "$defs": {
+    "EvaluatedAlternative": {
+      "additionalProperties": false,
+      "description": "Evaluation of one candidate alternative outcome on the target metric.",
+      "properties": {
+        "taxon_id": {
+          "description": "Hypothetical alternative taxon/label.",
+          "title": "Taxon Id",
+          "type": "string"
+        },
+        "alternative_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model score/confidence for this alternative if provided.",
+          "title": "Alternative Score"
+        },
+        "counterfactual_value": {
+          "description": "Target metric value if this alternative were confirmed.",
+          "title": "Counterfactual Value",
+          "type": "number"
+        },
+        "signed_delta": {
+          "description": "Signed change from baseline (counterfactual - baseline).",
+          "title": "Signed Delta",
+          "type": "number"
+        },
+        "absolute_delta": {
+          "description": "Absolute magnitude of change (|counterfactual - baseline|).",
+          "title": "Absolute Delta",
+          "type": "number"
+        },
+        "impact_summary": {
+          "description": "Concise human-readable impact description.",
+          "title": "Impact Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "taxon_id",
+        "counterfactual_value",
+        "signed_delta",
+        "absolute_delta",
+        "impact_summary"
+      ],
+      "title": "EvaluatedAlternative",
+      "type": "object"
+    },
+    "RankedCandidateResult": {
+      "additionalProperties": false,
+      "description": "Ranked review candidate with counterfactual evaluations.",
+      "properties": {
+        "rank": {
+          "description": "Priority rank (1 = highest impact).",
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "detection_id": {
+          "description": "ID of the candidate Detection.",
+          "title": "Detection Id",
+          "type": "string"
+        },
+        "encounter_id": {
+          "description": "ID of the Encounter containing this detection.",
+          "title": "Encounter Id",
+          "type": "string"
+        },
+        "observation_id": {
+          "description": "ID of parent Observation.",
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "camera_id": {
+          "description": "ID of the physical Camera trap.",
+          "title": "Camera Id",
+          "type": "string"
+        },
+        "current_effective_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Current effective taxon label before review.",
+          "title": "Current Effective Label"
+        },
+        "current_prediction": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original predicted taxon ID.",
+          "title": "Current Prediction"
+        },
+        "current_confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model confidence for current prediction.",
+          "title": "Current Confidence"
+        },
+        "score_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Score type of model prediction.",
+          "title": "Score Type"
+        },
+        "alternatives_evaluated": {
+          "description": "Evaluated alternative outcomes.",
+          "items": {
+            "$ref": "#/$defs/EvaluatedAlternative"
+          },
+          "title": "Alternatives Evaluated",
+          "type": "array"
+        },
+        "max_absolute_impact": {
+          "description": "Maximum absolute change in target metric across alternatives.",
+          "title": "Max Absolute Impact",
+          "type": "number"
+        },
+        "explanation": {
+          "description": "Deterministic explanation of why this candidate is prioritized.",
+          "title": "Explanation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rank",
+        "detection_id",
+        "encounter_id",
+        "observation_id",
+        "camera_id",
+        "max_absolute_impact",
+        "explanation"
+      ],
+      "title": "RankedCandidateResult",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Complete typed payload for conclusion-sensitive review ranking.",
+  "properties": {
+    "target_metric": {
+      "description": "Metric whose sensitivity guided review priority.",
+      "title": "Target Metric",
+      "type": "string"
+    },
+    "target_species_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Focal species for scalar metric.",
+      "title": "Target Species Id"
+    },
+    "metric_units": {
+      "description": "Units of the evaluated metric.",
+      "title": "Metric Units",
+      "type": "string"
+    },
+    "baseline_value": {
+      "description": "Baseline value of target metric prior to review.",
+      "title": "Baseline Value",
+      "type": "number"
+    },
+    "camera_id_a": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Camera A for comparison metric.",
+      "title": "Camera Id A"
+    },
+    "camera_id_b": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Camera B for comparison metric.",
+      "title": "Camera Id B"
+    },
+    "total_detections_in_scope": {
+      "description": "Total detections in scope.",
+      "title": "Total Detections In Scope",
+      "type": "integer"
+    },
+    "eligible_candidates_count": {
+      "description": "Detections meeting review eligibility.",
+      "title": "Eligible Candidates Count",
+      "type": "integer"
+    },
+    "ranked_candidates_count": {
+      "description": "Count of returned ranked candidates.",
+      "title": "Ranked Candidates Count",
+      "type": "integer"
+    },
+    "excluded_candidates_count": {
+      "description": "Detections evaluated but excluded (e.g. resolved, zero-impact).",
+      "title": "Excluded Candidates Count",
+      "type": "integer"
+    },
+    "candidates": {
+      "description": "Ranked review candidates.",
+      "items": {
+        "$ref": "#/$defs/RankedCandidateResult"
+      },
+      "title": "Candidates",
+      "type": "array"
+    },
+    "marginal_analysis_disclaimer": {
+      "default": "One-candidate-at-a-time marginal sensitivity analysis. Does NOT represent a joint uncertainty interval. Changes from multiple candidates are not additive due to encounter deduplication.",
+      "description": "Methodological limitations of marginal sensitivity ranking.",
+      "title": "Marginal Analysis Disclaimer",
+      "type": "string"
+    },
+    "note": {
+      "default": "Ranking priority is deterministically computed based on potential impact on the selected metric. This does not invent probabilities, write review events, or assert alternative labels are true.",
+      "description": "Operational context for reviewers.",
+      "title": "Note",
+      "type": "string"
+    }
+  },
+  "required": [
+    "target_metric",
+    "metric_units",
+    "baseline_value",
+    "total_detections_in_scope",
+    "eligible_candidates_count",
+    "ranked_candidates_count",
+    "excluded_candidates_count"
+  ],
+  "title": "ReviewRankingResult",
+  "type": "object"
+}

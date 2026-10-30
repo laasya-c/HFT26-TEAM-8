@@ -1,365 +1,258 @@
-# WILDSCOPE Team Handoff — Phase 2
+# WILDSCOPE Team Handoff — Phase 2 & Phase 3
 
 > **Prepared by:** Shravan (Analytics & Decision Intelligence Lead)
-> **Phase:** 2 — Cross-Camera Activity Analytics (`analyze()` implemented)
-> **Status:** Complete. `rank_review()` remains UNAVAILABLE (Phase 3).
-> **Schema version:** 1.1.0 (backward-compatible with 1.0.0)
+> **Phase:** Phase 2 (Cross-Camera Activity Analytics) & Phase 3 (Conclusion-Sensitive Review Prioritisation — Feature F18)
+> **Status:** Complete. Both `analyze()` and `rank_review()` are fully implemented and verified.
+> **Schema version:** `1.2.0` (fully backward-compatible with `1.1.0` and `1.0.0`)
 > **Branch:** `shravan`
+> **Test Suite:** **150 passed, 1 skipped** (Caltech real integration test skipped due to sandbox network isolation)
 
 ---
 
-## 0. Quick Summary of What Changed
+## 0. Executive Summary of Implementation
 
-| Area | Phase 1 | Phase 2 |
+| Capability | Phase 1 Baseline | Phase 2 Analytics | Phase 3 Decision Intelligence |
+|---|---|---|---|
+| `analyze()` | `UNAVAILABLE` | **Fully implemented** (7 core metrics) | Extended with `reference_image_species_counts` and explicit encounter processing statuses |
+| `rank_review()` | `UNAVAILABLE` | `UNAVAILABLE` (deferred) | **Fully implemented** (Feature F18: deterministic marginal sensitivity ranking) |
+| Schema Version | `1.0.0` | `1.1.0` | **`1.2.0`** (additive, backward-compatible) |
+| Data Source Modes | None | `operational_prediction` / `dataset_reference` | Enforced: `rank_review()` only runs on `operational_prediction` |
+| Encounter Capability | Implicit (`encounters == []`) | Inferred from presence | **Explicit metadata** via `EncounterProcessingStatus` (`COMPLETED`, `PENDING`, `FAILED`, `UNAVAILABLE`) |
+| Reference Metric Units | Masked as encounters | Documented distinction | **Dedicated metric** `reference_image_species_counts`; deprecation warning on `species_encounter_counts` |
+| Review Ordering | Clock timestamps only | `ReviewEvent.sequence_number` | Full regression safety: ambiguous conflicts excluded with explicit reporting |
+| Tests Passing | 38 | 117 passing (1 skipped) | **150 passing, 1 skipped** (real Caltech integration pending manual download) |
+
+---
+
+## 1. Public Analytics & Decision Intelligence Interfaces
+
+WildScope exports two primary public entrypoints from `wildscope_analytics`:
+
+### 1.1 `analyze(snapshot, request) -> AnalysisResponseEnvelope`
+Computes wildlife activity analytics across cameras, encounters, dates, and hours.
+
+Supported `AnalysisMetric` values:
+1. `overview`: Global snapshot summary (cameras, encounters, time span, detection and review triage breakdown).
+2. `species_encounter_counts`: Deduplicated encounter/species pairs across cameras.
+3. `camera_comparison`: Multi-camera or pairwise encounter/species breakdown.
+4. `daily_activity`: Encounter counts binned by calendar day in target timezone.
+5. `hourly_activity`: Diel 24-hour encounter distribution in target timezone.
+6. `species_camera_matrix`: Species × camera encounter contingency matrix.
+7. `effort_normalised_rates`: Encounters per active camera-day (requires monitoring effort records).
+8. `reference_image_species_counts`: Explicit image-level species counts for ground-truth reference datasets (e.g. Caltech Camera Traps).
+
+### 1.2 `rank_review(snapshot, request) -> AnalysisResponseEnvelope`
+Computes conclusion-sensitive review prioritisation (Feature F18). Evaluates candidate detections one at a time and ranks them by how much a reviewer's decision could alter key management conclusions:
+$$\text{Marginal Impact} = \max_{\text{alt}} |\text{Metric}(\text{Candidate} \to \text{alt}) - \text{Baseline Metric}|$$
+
+Supported `target_metric` values:
+1. `AnalysisMetric.SPECIES_ENCOUNTER_COUNTS`: Evaluates marginal impact on focal `target_species_id` encounter count.
+2. `AnalysisMetric.CAMERA_COMPARISON`: Evaluates marginal impact on pairwise camera difference $\text{Count}(cam_A) - \text{Count}(cam_B)$ for focal `target_species_id`.
+
+---
+
+## 2. Phase 2 Backend Gap Closures & Precise Semantics
+
+### 2.1 Encounter Capability vs Empty Results (`EncounterProcessingStatus`)
+In earlier revisions, `snapshot.encounters == []` ambiguously represented either "pipeline failed to group" or "grouping completed with 0 encounters".
+
+In Schema `1.2.0`, `SnapshotMetadata.encounter_processing_status` explicitly distinguishes these states:
+- `COMPLETED`: Encounter grouping pipeline ran to completion. If `snapshot.encounters == []`, operations return valid **zero counts** (`total_encounters: 0`, `species_entries: []`) with `status = ResponseStatus.OK`.
+- `PENDING`: Grouping is currently running in background jobs. Encounter-dependent metrics return `ResponseStatus.UNAVAILABLE` with explanation.
+- `FAILED`: Grouping failed in upstream pipeline. Returns `ResponseStatus.UNAVAILABLE`.
+- `UNAVAILABLE` or `None` (legacy compatibility): If encounters list is empty and status is absent or unavailable, analytics safely and conservatively returns `ResponseStatus.UNAVAILABLE`.
+
+### 2.2 Response Status Semantics Matrix
+| Status | Exact Meaning | Conditions / Behavior |
 |---|---|---|
-| `analyze()` | Returns `UNAVAILABLE` | **Fully implemented** — 7 metrics |
-| `rank_review()` | Returns `UNAVAILABLE` | Still `UNAVAILABLE` (Phase 3) |
-| Schema version | 1.0.0 | **1.1.0** (additive, backward-compat) |
-| Data source modes | — | `operational_prediction` / `dataset_reference` |
-| Dataset reference annotations | — | `DatasetReferenceAnnotation` entity |
-| Review ordering | Timestamp-only risk | `sequence_number` field on `ReviewEvent` |
-| Caltech dataset | — | Adapter implemented; blocked by network |
-| Tests | 38 passing | **117 passing, 1 skipped** |
+| `ok` | Flawless computation | All records in scope have valid timestamps, resolved labels, effort intervals, and 0 exclusions. |
+| `partial` | Usable results with exclusions | Some encounters lack timestamps for diel bins, detections below confidence threshold, ambiguous review conflicts present, or candidate list truncated by `max_records_to_rank`. |
+| `insufficient_data` | Prerequisite exists but lacks required data | Monitoring effort exists but covers 0 active camera-days in the requested window; encounters exist but all lack timestamps for hourly binning. |
+| `unavailable` | Entirely absent capability or prerequisite | Effort rates requested on snapshot with no effort records; operational encounter metrics requested when grouping is pending/unavailable; `rank_review()` called on `dataset_reference` snapshots. |
+| `invalid_request` | Precondition or contract error | Target species omitted for ranking; identical cameras supplied to pairwise comparison; optimistic concurrency conflict (`expected_revision != snapshot.metadata.dataset_revision`). |
+
+### 2.3 Reference-Mode Naming & Units
+- When evaluating `dataset_reference` snapshots, image-level annotations must never masquerade as encounter counts.
+- **New Metric:** `AnalysisMetric.REFERENCE_IMAGE_SPECIES_COUNTS` is the official operation for reference datasets. Units are strictly `"annotated images"`.
+- **Deprecation Policy:** Calling `SPECIES_ENCOUNTER_COUNTS` on reference snapshots is supported for backward-compatibility but returns image-level counts with `metric_units = "annotated images (reference mode)"` and emits an explicit deprecation warning in `AnalysisResponseEnvelope.warnings`.
 
 ---
 
-## 1. New Metrics in `analyze()`
+## 3. Phase 3: Conclusion-Sensitive Review Engine (Feature F18)
 
-Call `analyze(snapshot, request)` with `request.metric` set to any of:
+### 3.1 Core Workflow & Architecture
+```
+ReviewRankingRequest
+        │
+        ▼
+Validation & Revision Lock ──(Mismatch)──► INVALID_REQUEST
+        │
+        ▼
+Baseline Metric Calculation (analyze engine)
+        │
+        ▼
+Candidate Discovery & Filtering
+  ├── Must be operational prediction
+  ├── Within requested camera_ids and time window
+  ├── Member of at least one encounter in scope
+  ├── Exclude finally resolved (confirm, correct, mark_unknown)
+  ├── Exclude rejected / empty frame detections
+  ├── Exclude ambiguous review conflicts (reported in partial status)
+  └── Confidence margin <= threshold OR FLAG_FOR_EXPERT
+        │
+        ▼
+Isolated Counterfactual Simulation (One candidate at a time)
+  ├── For each documented model alternative (or allow_unknown / allow_rejection)
+  ├── Recompute encounter-level species presence with candidate substituted
+  ├── Delta = Counterfactual Value - Baseline Value
+  └── Record signed_delta, absolute_delta, and dynamic explanation
+        │
+        ▼
+Ranking & Deduplication
+  ├── Filter zero impact (unless include_zero_impact=True)
+  ├── Sort by max_absolute_impact descending
+  ├── Stable tie-break by detection_id ascending
+  └── Truncate to max_records_to_rank (status=partial if truncated)
+        │
+        ▼
+AnalysisResponseEnvelope (Typed ReviewRankingResult payload)
+```
 
-| `AnalysisMetric` value | Description |
-|---|---|
-| `overview` | Snapshot summary: encounter counts, cameras, time coverage, detection status |
-| `species_encounter_counts` | Deduplicated encounter/species pairs |
-| `camera_comparison` | Per-camera encounter and species breakdown |
-| `daily_activity` | Encounter counts by calendar date (requires `analysis_timezone`) |
-| `hourly_activity` | Encounter counts by hour-of-day 0–23 (requires `analysis_timezone`) |
-| `species_camera_matrix` | Species × camera encounter count matrix |
-| `effort_normalised_rates` | Encounters per active camera-day (requires effort records) |
+### 3.2 Candidate Eligibility Rules
+A Detection is eligible for conclusion-sensitive review ranking if and only if:
+1. **Operational Inference:** Snapshot mode is `operational_prediction`.
+2. **In-Scope Encounter:** Belongs to an encounter matching the requested cameras and time window.
+3. **Unresolved Triage State:** Not previously resolved by human review (`CONFIRM_SPECIES`, `CORRECT_SPECIES`, `MARK_UNKNOWN`, or `REJECT_DETECTION`).
+4. **Honest Documented Alternatives:** Possesses alternative candidate taxa from the vision classifier (`alternatives` list). If parameters `allow_unknown_alternative` or `allow_rejection_alternative` are enabled, synthetic review outcomes `__unknown__` and `__rejected__` are also evaluated.
+5. **Ambiguity Margin:** Either flagged for expert (`FLAG_FOR_EXPERT`) or model confidence margin is within `score_margin_threshold`:
+   $$\text{confidence} - \text{top\_alternative\_score} \le \text{score\_margin\_threshold}$$
 
-**Legacy Phase 1 aliases still work** (mapped internally with a warning):
+### 3.3 Encounter Deduplication Preservation
+WildScope groups multiple detections into encounters. If an encounter contains Detection 1 (Bobcat) and Detection 2 (predicted Coyote with Bobcat alternative):
+- Changing Detection 2 to Bobcat does **not** increase the encounter count because the encounter is already established as a Bobcat encounter by Detection 1.
+- In this situation, Detection 2's marginal impact is **0.0**. By default, zero-impact candidates are filtered out of the review queue (unless `include_zero_impact=True` is requested).
 
-| Legacy value | Maps to |
-|---|---|
-| `activity_time_distribution` | `hourly_activity` |
-| `cross_camera_association` | `camera_comparison` |
-| `camera_activity_summary` | `overview` |
-| `monitoring_coverage_summary` | `effort_normalised_rates` |
+### 3.4 Non-Additive Marginal Sensitivity Disclaimer & Counterexample
+> [!IMPORTANT]
+> Marginal sensitivity is computed **one candidate at a time**. Marginal changes from individual candidates **CANNOT be summed** to predict the effect of reviewing multiple detections jointly.
+
+#### Mathematical Counterexample:
+- **Scenario:** Single encounter containing Detection A (predicted Coyote) and Detection B (predicted Coyote). Both have alternative Lynx. Target metric: Lynx encounter count.
+- **Baseline Lynx encounters:** $0$.
+- **Marginal evaluation of Candidate A:**
+  If A is corrected to Lynx, the encounter becomes a Lynx encounter. $\Delta_A = +1$.
+- **Marginal evaluation of Candidate B:**
+  If B is corrected to Lynx, the encounter becomes a Lynx encounter. $\Delta_B = +1$.
+- **Naive Sum of Marginals:** $\Delta_A + \Delta_B = +2$.
+- **Actual Joint Review:**
+  If a reviewer resolves **both** A and B to Lynx, the encounter contains Lynx.
+  The actual encounter count becomes $1$.
+  $$\Delta_{\text{joint}} = 1 \ne \Delta_A + \Delta_B$$
+- **Contract Guarantee:** Every `rank_review()` response envelope includes this explicit warning in `limitations` and `ReviewRankingResult.marginal_analysis_disclaimer`.
 
 ---
 
-## 2. For Harsh (Vision & Model Inference)
+## 4. Instructions for Team Roles
 
-### What is needed for operational analytics to work
+### 4.1 For Harsh (Detection, Classification & Encounter Grouping)
+1. **Documented Alternatives:** Vision models should populate `alternatives: list[TaxonAlternative]` on Detection records when classification confidence is below 0.85. Provide realistic candidate species from model softmax distribution. Do not fabricate alternatives if none exist.
+2. **Encounter Grouping Status:** Always populate `SnapshotMetadata.encounter_processing_status`:
+   - Set to `COMPLETED` when `group_encounters()` has completed (even if 0 encounters resulted).
+   - Set to `PENDING` when encounter grouping job is queued or in-flight.
+3. **Preserve Immutability:** Detections output from the vision pipeline are immutable ground observations. Never overwrite `predicted_taxon_id` or `classification_confidence`.
 
-1. **Encounter export via `group_encounters()`** — This is the primary input to all Phase 2 analytics. Encounters must be exported in the `Snapshot.encounters` list with:
-   - `camera_id` — the physical camera where the encounter occurred
-   - `member_detection_ids` — list of Detection IDs in this encounter
-   - `member_observation_ids` — list of Observation IDs
-   - `start_time` + `end_time` — **timezone-aware** timestamps. Without these, time-based analytics (daily/hourly activity) will exclude the encounter and report `status=partial`.
-   - `rule_version` — e.g. `"v1_time_gap_30min"` to document the grouping policy
+### 4.2 For Santosh (Backend, APIs & Persistence)
+1. **Schema Version 1.2.0:** Use `schema_version = "1.2.0"` for all new snapshot exports.
+2. **Review Event Sequencing:** Continue storing monotone `sequence_number` per target detection:
+   ```sql
+   INSERT INTO reviews (id, target_id, decision, corrected_taxon_id, sequence_number, reviewer, created_at)
+   VALUES ($1, $2, $3, $4, nextval('review_seq_' || $2), $5, NOW());
+   ```
+   If duplicate or tied sequence numbers occur with conflicting decisions, the analytics engine flags them as unresolvable conflicts and excludes them with an explicit data defect warning.
+3. **Optimistic Revision Guarding:** Pass `request.expected_revision` to both `analyze()` and `rank_review()`. If `expected_revision != snapshot.metadata.dataset_revision`, the call immediately returns `INVALID_REQUEST` without running expensive computations.
+4. **Append-Only Reviews:** Never modify historical review events. Post-review changes must be committed as new review events with incremented sequence numbers.
 
-2. **Do not invent a second encounter grouper** — Shravan's module reuses Harsh's encounter records as-is; it does not re-group.
-
-3. **Triage state must be set correctly** on each Detection:
-   - `animal_detected` — animal present; species classification attempted
-   - `likely_empty` — no animal; excluded from all species counts
-   - `unsupported_taxon` — animal present but outside model's catalog
-   - `processing_failure` — corrupt/failed frame
-
-4. **Reference-mode note** — If you apply `group_encounters()` to Caltech Camera Traps images, pass the resulting encounters into a snapshot with `data_source_mode=dataset_reference` and use reference annotations instead of operational detections. Do **not** mix the two.
-
----
-
-## 3. For Santosh (Backend, Persistence & Snapshot Assembly)
-
-### Schema version 1.1.0 — additive changes only
-
-Version 1.0.0 snapshots are still accepted. Version 1.1.0 adds three optional fields to `SnapshotMetadata`:
-
-```json
-{
-  "metadata": {
-    "schema_version": "1.1.0",
-    "dataset_revision": 42,
-    "data_source_mode": "operational_prediction",
-    "review_ordering_mechanism": "backend_revision",
-    ...
-  }
-}
-```
-
-- `data_source_mode`: `"operational_prediction"` (default) or `"dataset_reference"`
-- `review_ordering_mechanism`: `"backend_revision"` (default), `"sequence_number"`, `"timestamp"`, or `"unresolvable"`
-
-### Critical: ReviewEvent ordering — `sequence_number` field
-
-Phase 2 adds `sequence_number: int | None` to `ReviewEvent`. This is the **authoritative ordering mechanism** when multiple reviews exist for the same detection.
-
-**Problem Shravan's resolver must solve:** If a reviewer corrects species A → B, then a second reviewer corrects B → C, the resolver needs to know which review is most recent. `created_at` timestamps can be tied or arrive out of clock order. `expected_revision` is a concurrency *precondition*, not a sequencing mechanism.
-
-**Required action from Santosh:**
-```sql
--- On review INSERT, assign a monotone sequence number per target detection
-INSERT INTO reviews (id, target_id, decision, ..., sequence_number)
-VALUES (..., nextval('review_sequence_per_target'))
-```
-
-When exporting snapshots, populate `ReviewEvent.sequence_number` from this counter. Without it, the resolver will report `is_unresolved=True` for conflicting multi-review detections rather than guessing.
-
-### Snapshot assembly checklist
-
-- [ ] Set `metadata.schema_version = "1.1.0"`
-- [ ] Set `metadata.dataset_revision` to current DB counter
-- [ ] Set `metadata.data_source_mode` appropriately
-- [ ] Populate `ReviewEvent.sequence_number` from backend monotone counter
-- [ ] Export monitoring effort intervals as pre-merged, non-overlapping active periods
-- [ ] Call `load_and_validate_snapshot()` before passing to `analyze()`
-
-### Revision conflict handling (unchanged from Phase 1)
-
-If `request.expected_revision != snapshot.metadata.dataset_revision`, `analyze()` returns `status=invalid_request`. The frontend (Laasya) should handle this and refresh the snapshot.
+### 4.3 For Laasya (Frontend & Review Interface)
+1. **Review Priority Queue Display:**
+   - Consume `response.result.candidates` from `rank_review()`.
+   - Render in order of `rank` (1 = highest priority).
+   - Display `explanation` directly in the UI as the justification for why this candidate was queued.
+   - Show `max_absolute_impact` as the metric sensitivity score.
+2. **Non-Additivity Warning:** Display the `marginal_analysis_disclaimer` above the review queue:
+   *"Priority reflects single-candidate marginal sensitivity. Reviewing multiple detections in the same encounter will have deduplicated joint effects."*
+3. **Handling Statuses:**
+   - If `status == "partial"`: Show warning banner with `exclusion_reasons` and `limitations` (e.g. truncated list or ambiguous review records).
+   - If `status == "invalid_request"` with revision error: Prompt the reviewer that the dataset was updated and trigger a background refresh.
 
 ---
 
-## 4. For Laasya (Frontend & Dashboard)
+## 5. Caltech Camera Traps Real Dataset Integration
 
-### Response envelope is unchanged in structure
-
-Every `analyze()` call returns `AnalysisResponseEnvelope` with:
-
-```json
-{
-  "status": "ok",
-  "schema_version": "1.1.0",
-  "dataset_revision": 42,
-  "metric": "species_encounter_counts",
-  "applied_filters": { ... },
-  "result": { ... },
-  "metric_units": "deduplicated encounter/species pairs",
-  "evidence_references": ["enc_001", "enc_002"],
-  "excluded_records_count": 0,
-  "exclusion_reasons": [],
-  "warnings": [],
-  "limitations": []
-}
-```
-
-### Status semantics (precise per-metric contract)
-
-| Status | Exact Meaning & Trigger Condition | Example Scenarios |
-|---|---|---|
-| `ok` | Computation completed cleanly with zero record exclusions. | All records in scope have valid timestamps, confirmed labels, and complete metadata. |
-| `partial` | Usable results produced, but some records were excluded. Always inspect `excluded_records_count` and `exclusion_reasons`. | Some encounters missing timestamps (excluded from daily/hourly bins); detections below `min_confidence`; unresolved review conflicts; cameras without effort records. |
-| `insufficient_data` | Input records exist in the snapshot, but are inadequate/insufficient to compute the requested metric. | Encounters exist, but **all** scoped encounters lack timestamps (cannot bin by date/hour); monitoring effort records exist, but cover **zero active camera-days** in the requested analysis window. |
-| `unavailable` | A prerequisite data type or capability is **entirely absent** from the snapshot or pipeline. | `rank_review()` called before Phase 3; encounter metrics called with `snapshot.encounters == []` (requires Harsh's `group_encounters()`); `effort_normalised_rates` called with `snapshot.monitoring_efforts == []`. |
-| `invalid_request` | Contract or precondition violation; inspect `errors[]`. | Snapshot schema validation failed; `expected_revision` mismatch with `dataset_revision` (optimistic locking failure). |
-
-### Encounter Dependency Matrix
-
-Encounter grouping is externally owned by Harsh (`group_encounters()`). Shravan's analytics module consumes encounters; it never invents a competing grouping algorithm or infers encounters from image counts.
-
-| Metric | Requires Encounters? | Behavior when Encounters Absent | Behavior when All Timestamps Missing | Behavior when Some Timestamps Missing |
-|---|---|---|---|---|
-| `overview` | Optional | Computes image/camera/detection counts; `total_encounters` is `null` with explanation | Reports time span if observations have timestamps | Reports time span from available timestamps |
-| `species_encounter_counts` (operational) | **Required** | `unavailable` (limitation explains Harsh dependency) | Encounters counted without time-window filtering | Encounters outside window excluded (`partial`) |
-| `species_encounter_counts` (reference) | No (uses images) | `ok` / `partial` (counts annotated images, clearly distinct from encounters) | Images without timestamp excluded from time filters | Images without timestamp excluded (`partial`) |
-| `camera_comparison` | **Required** | `unavailable` | All encounters counted per camera | Excluded from time filters (`partial`) |
-| `daily_activity` | **Required** | `unavailable` | `insufficient_data` (cannot group by date) | `partial` (valid binned, missing reported) |
-| `hourly_activity` | **Required** | `unavailable` | `insufficient_data` (cannot group by hour) | `partial` (valid binned, missing reported) |
-| `species_camera_matrix` | **Required** | `unavailable` | Matrix cells populated without time filter | Excluded from time filters (`partial`) |
-| `effort_normalised_rates` | **Required** | `unavailable` | Encounters without timestamp counted in `encounters_outside_effort` | Encounters outside effort counted separately (`partial`) |
-
-### ReviewEvent.sequence_number & Review Conflict Resolution
-
-When multiple reviews exist for a single target detection, deterministic resolution is required.
-
-#### Requirements for Santosh's Backend
-1. **Field:** `ReviewEvent.sequence_number: int | None` (schema 1.1.0).
-2. **Semantics:** Monotonically increasing positive integer assigned on review creation, unique per target detection.
-3. **Ordering Authority:** The review with the highest `sequence_number` is authoritative (represents the latest backend review state).
-
-#### Handling Ambiguous / Missing / Duplicate Sequences
-- **All Reviews Agree:** If all reviews on a detection share the identical `decision` and `corrected_taxon_id`, the decision is applied even if `sequence_number` is absent.
-- **Missing `sequence_number` with Conflicting Decisions:** Marked `is_unresolved=True`, `taxon_id="__unresolved__"`, and conflict note populated. The resolver **never guesses** or falls back to timestamps unless explicitly configured with `ReviewOrderingMechanism.TIMESTAMP`.
-- **Duplicate / Tied `sequence_number`:** If multiple reviews share the highest `sequence_number` with conflicting decisions, this is flagged as a backend data integrity bug. The resolver marks `is_unresolved=True` and records an explicit conflict note (`Duplicate sequence_number X on ReviewEvents [...]`).
-- **Analytics Safety Guarantee:** Unresolved detections (`is_unresolved=True`) are strictly blocked by `_is_detection_eligible()`. They **never** contribute to species encounter counts, camera breakdowns, or matrix cells. They are tracked and reported in `unresolved_detections_count` and trigger `status=partial`.
-
-### Per-metric result shapes
-
-**`overview`**
-```json
-{
-  "data_source_mode": "operational_prediction",
-  "counting_unit": "encounter",
-  "total_encounters": 47,
-  "total_cameras_in_scope": 12,
-  "time_coverage_start": "2026-10-01T...",
-  "time_coverage_end": "2026-10-30T...",
-  "detections_classified": 120,
-  "detections_rejected": 3,
-  "detections_unknown_species": 8
-}
-```
-
-**`species_encounter_counts`**
-```json
-{
-  "counting_unit": "deduplicated encounter/species pairs",
-  "species_entries": [
-    { "taxon_id": "panthera_tigris", "encounter_count": 12, "evidence_encounter_ids": [...] },
-    { "taxon_id": "axis_axis", "encounter_count": 8, "evidence_encounter_ids": [...] }
-  ],
-  "unknown_animal_encounters": 2,
-  "multi_species_encounters": 3,
-  "total_eligible_encounters": 47,
-  "note": "Summed species counts may exceed total_eligible_encounters in multi-species encounters."
-}
-```
-
-**`hourly_activity`**
-```json
-{
-  "analysis_timezone": "Asia/Kolkata",
-  "hour_counts": {
-    "00": 0, "01": 0, ..., "06": 5, "07": 8, ..., "23": 1
-  },
-  "note": "Zero in a bin = zero recorded encounters, NOT absence of monitoring coverage."
-}
-```
-
-**`effort_normalised_rates`**
-```json
-{
-  "counting_unit": "encounters per active camera-day",
-  "camera_rates": [
-    {
-      "camera_id": "cam_core_01",
-      "active_camera_days_in_window": 5.0,
-      "encounters_in_effort": 12,
-      "rate_per_camera_day": 2.4
-    }
-  ],
-  "total_active_camera_days": 35.0,
-  "overall_rate_per_camera_day": 1.34
-}
-```
-
-### Important display notes
-
-- **Encounter ≠ individual animal.** Never display encounter count as population size.
-- **Unknown species** (`unknown_animal_encounters`) must be displayed separately — do not distribute them into named species.
-- **Unresolved detections** mean conflicting reviews with ambiguous ordering — show them explicitly, not as any species.
-- **Dataset-reference results** are ground-truth annotation counts, not model accuracy. Do not label them as model performance.
-- **Evidence references** are bounded samples (max 10); each entry shows `evidence_sample_note` when truncated.
-
----
-
-## 5. Caltech Dataset Integration
-
-### Status: BLOCKED (sandbox network isolation)
-
+### 5.1 Sandbox Blocker Details
+In standard development sandbox mode, outbound network requests to Azure Blob storage fail:
 ```
 socket.gaierror: [Errno 11001] getaddrinfo failed
 ```
+As per integration instructions, synthetic benchmarks and mocks verified all logic; the real dataset test remains safely skipped in the automated harness without fabricating results.
 
-No outbound network access from the development sandbox. **Run these exact Windows PowerShell commands outside the sandbox:**
+### 5.2 Commands to Download and Run Caltech Integration
+To execute the real dataset import and analytics on Windows PowerShell outside sandbox restrictions:
 
 ```powershell
-# Step 1: Download official Caltech Camera Traps annotations archive (verified Lila Wildlife URL)
+# 1. Download official Caltech Camera Traps annotations archive (verified Lila Wildlife URL)
 Invoke-WebRequest -Uri "https://lilawildlife.blob.core.windows.net/lila-wildlife/caltechcameratraps/labels/caltech_camera_traps.json.zip" -OutFile "caltech_camera_traps.json.zip"
 
-# Step 2: Extract archive (expands to caltech_camera_traps.json)
+# 2. Extract archive
 Expand-Archive -Path "caltech_camera_traps.json.zip" -DestinationPath "." -Force
 
-# Step 3: Run the CLI adapter to import snapshot and display overview metrics
-python -m wildscope_analytics.caltech_adapter caltech_camera_traps.json --max-images 500 --timezone US/Pacific --metric overview
+# 3. Run reference analytics via adapter CLI
+python -m wildscope_analytics.caltech_adapter caltech_camera_traps.json --max-images 1000 --timezone US/Pacific --metric reference_image_species_counts
 
-# Step 4: Run the real integration test suite pointing to the extracted file
+# 4. Run the integration test suite against the local file
 $env:CCT_ANNOTATION_FILE = "caltech_camera_traps.json"
-python -m pytest tests/test_phase2_analytics.py::TestCaltechRealDatasetBlocked::test_real_dataset_integration -v -s
+python -m pytest tests/test_phase2_analytics.py::TestCaltechRealDatasetIntegration -v -s
 ```
 
-License: Community Data License Agreement - Permissive 1.0 (see lila.science for terms).
+---
 
-### Running the adapter via Python CLI or API
+## 6. Runnable Verification Commands
 
 ```powershell
-# Using the adapter CLI runner:
-python -m wildscope_analytics.caltech_adapter caltech_camera_traps.json --max-images 500 --timezone US/Pacific --metric species_encounter_counts
-
-# Or via Python script:
-python -c "
-from wildscope_analytics.caltech_adapter import import_caltech_snapshot
-from wildscope_analytics import analyze, AnalysisRequest, AnalysisMetric
-snap, report = import_caltech_snapshot(
-    'caltech_camera_traps.json',
-    max_images=500,
-    timezone_policy='US/Pacific',   # analyst-supplied; not in dataset
-)
-print(f'Imported: {report.total_images_imported} images across {report.total_cameras} cameras')
-req = AnalysisRequest(metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS)
-resp = analyze(snap, req)
-print(resp.model_dump_json(indent=2))
-"
-```
-
-### Important: dataset-reference analytics are not model accuracy
-
-- These are official human-annotated ground-truth labels.
-- Counts are **image-level** (not encounter-based; CCT has no encounter grouping).
-- `encountered_animal_encounters` in reference mode means **annotated images**, not encounters.
-- Never present these as WILDSCOPE model performance metrics.
-
----
-
-## 6. Runnable Commands
-
-```bash
-# 1. Install dependencies
-pip install -e ".[dev]"
-
-# 2. Run all tests
+# 1. Run complete test suite (150 tests)
 python -m pytest tests/ -v
 
-# 3. Regenerate JSON schemas
+# 2. Run Phase 3 ranking test suite specifically
+python -m pytest tests/test_phase3_ranking.py -v
+
+# 3. Regenerate all JSON Schemas in schemas/
 python wildscope_analytics/schema_generator.py
 
-# 4. Import real Caltech annotations (after download)
-python -c "from wildscope_analytics.caltech_adapter import import_caltech_snapshot; snap, r = import_caltech_snapshot('caltech_camera_traps.json'); print(r)"
-
-# 5. Run analytics on the valid_snapshot.json example (operational)
+# 4. Verify rank_review() in interactive Python
 python -c "
-from wildscope_analytics import analyze, load_and_validate_snapshot, AnalysisRequest, AnalysisMetric
+from wildscope_analytics import Snapshot, load_and_validate_snapshot, rank_review, ReviewRankingRequest, AnalysisMetric
 snap, _ = load_and_validate_snapshot('examples/valid_snapshot.json')
-resp = analyze(snap, AnalysisRequest(metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS))
-print(resp.model_dump_json(indent=2))
+req = ReviewRankingRequest(target_metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS, target_species_id='panthera_tigris')
+resp = rank_review(snap, req)
+print('Status:', resp.status)
+print('Ranked candidates:', resp.result['ranked_candidates_count'])
 "
 ```
 
 ---
 
-## 7. Files Created / Modified in Phase 2
+## 7. Complete Artifact & Schema Inventory
 
-| File | Change |
-|---|---|
-| `wildscope_analytics/contracts/enums.py` | +`DataSourceMode`, `ReviewOrderingMechanism`, `AnnotationSource`; extended `AnalysisMetric`; extended `ValidationErrorCode` |
-| `wildscope_analytics/contracts/entities.py` | +`DatasetReferenceAnnotation`; +`ReviewEvent.sequence_number` |
-| `wildscope_analytics/contracts/snapshot.py` | Schema 1.1.0; +`data_source_mode`, `review_ordering_mechanism`, `reference_annotations` on Snapshot |
-| `wildscope_analytics/contracts/__init__.py` | Exports new Phase 2 types |
-| `wildscope_analytics/__init__.py` | Imports from `analytics.py`; exports new types |
-| `wildscope_analytics/analytics.py` | **NEW** — effective-label resolver + 7 metric implementations + dispatcher |
-| `wildscope_analytics/caltech_adapter.py` | **NEW** — Caltech CCT dataset adapter |
-| `wildscope_analytics/schema_generator.py` | +`DatasetReferenceAnnotation` schema export |
-| `schemas/dataset_reference_annotation.schema.json` | **NEW** generated schema |
-| `schemas/*.schema.json` | Regenerated with 1.1.0 fields |
-| `tests/test_phase2_analytics.py` | **NEW** — 71 Phase 2 tests |
-| `tests/test_validation.py` | Updated `test_analyze_on_valid_snapshot` to validate Phase 2 behaviour |
-| `docs/team_handoff.md` | This document |
+### Schemas Generated (`schemas/`):
+- `snapshot.schema.json` (Schema v1.2.0)
+- `analysis_request.schema.json`
+- `analysis_response.schema.json`
+- `review_ranking_request.schema.json`
+- `review_ranking_result.schema.json`
+- `dataset_reference_annotation.schema.json`
 
----
-
-## 8. Phase 3 Scope (Not Yet Implemented)
-
-`rank_review()` returns `status=unavailable` with an explicit Phase 3 note.
-Do not implement anomaly detection, cross-camera animal identity association, geofencing, or infrastructure scenarios in Phase 2.
+### Code Modules:
+- `wildscope_analytics/contracts/`: Data contracts, Pydantic models, request/response models.
+- `wildscope_analytics/analytics.py`: Effective-label resolver, encounter capability dispatcher, 8 activity metrics.
+- `wildscope_analytics/ranking.py`: Conclusion-sensitive review ranking engine (isolated counterfactual simulation, encounter deduplication, dynamic explanations).
+- `wildscope_analytics/caltech_adapter.py`: Ground-truth dataset importer.
+- `wildscope_analytics/validation.py`: Snapshot referential integrity and schema validator.

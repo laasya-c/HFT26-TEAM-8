@@ -34,11 +34,12 @@ from wildscope_analytics.contracts.entities import (
 )
 from wildscope_analytics.contracts.enums import (
     DataSourceMode,
+    EncounterProcessingStatus,
     ReviewOrderingMechanism,
 )
 
-CURRENT_SCHEMA_VERSION = "1.1.0"
-SUPPORTED_SCHEMA_VERSIONS = {"1.0.0", "1.1.0"}
+CURRENT_SCHEMA_VERSION = "1.2.0"
+SUPPORTED_SCHEMA_VERSIONS = {"1.0.0", "1.1.0", "1.2.0"}
 
 
 class SnapshotMetadata(BaseContractModel):
@@ -88,6 +89,14 @@ class SnapshotMetadata(BaseContractModel):
             "Phase 2: documents how multiple ReviewEvents for the same detection target "
             "are ordered when resolving effective labels. "
             "backend_revision requires Santosh to supply a per-event sequence_number field."
+        ),
+    )
+    encounter_processing_status: EncounterProcessingStatus | None = Field(
+        default=None,
+        description=(
+            "Phase 3: status of encounter grouping processing (Harsh's group_encounters). "
+            "When None (legacy 1.0.0/1.1.0 snapshot), conservative compatibility treats an empty "
+            "encounters list as UNAVAILABLE."
         ),
     )
 

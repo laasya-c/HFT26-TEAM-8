@@ -1405,17 +1405,18 @@ class TestTimezoneHandling:
 # ---------------------------------------------------------------------------
 
 class TestRankReviewUnavailable:
-    """rank_review() must remain UNAVAILABLE until Phase 3."""
+    """rank_review() returns UNAVAILABLE for deferred metrics."""
 
-    def test_rank_review_returns_unavailable(self):
+    def test_rank_review_deferred_metric_returns_unavailable(self):
         snap = Snapshot(metadata=_meta())
         req = ReviewRankingRequest(
-            target_metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
+            target_metric=AnalysisMetric.DAILY_ACTIVITY,
+            target_species_id="puma_concolor",
         )
         resp = rank_review(snap, req)
         assert resp.status == ResponseStatus.UNAVAILABLE
         assert resp.result is None
-        assert any("Phase 3" in lim for lim in resp.limitations)
+        assert any("deferred" in lim.lower() for lim in resp.limitations)
 
     def test_rank_review_revision_mismatch_invalid_request(self):
         snap = Snapshot(metadata=_meta(revision=3))

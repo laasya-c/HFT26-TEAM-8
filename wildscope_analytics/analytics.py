@@ -44,6 +44,7 @@ from wildscope_analytics.contracts.entities import BaseContractModel
 from wildscope_analytics.contracts.enums import (
     AnalysisMetric,
     DataSourceMode,
+    EncounterProcessingStatus,
     InclusionPolicy,
     ResponseStatus,
     ReviewDecision,
@@ -471,6 +472,93 @@ def _sample_evidence(ids: list[str]) -> list[str]:
     return unique[:_MAX_EVIDENCE_SAMPLE]
 
 
+def _check_encounter_capability(
+    snapshot: Snapshot,
+    metric: AnalysisMetric,
+    request: AnalysisRequest | ReviewRankingRequest,
+    ctx: FilterContext,
+) -> AnalysisResponseEnvelope | None:
+    """
+    Distinguishes encounter capability states (Part A.1):
+    1. snapshot.encounters has records -> completed grouping with encounters. Returns None (proceed).
+    2. encounter_processing_status == COMPLETED and encounters == []:
+       Grouping completed with zero encounters!
+       Returns None (proceed; function will compute valid zero counts).
+    3. encounter_processing_status == PENDING:
+       Grouping in-progress/pending in Harsh's pipeline.
+       Returns UNAVAILABLE with limitation.
+    4. encounter_processing_status == FAILED:
+       Grouping failed in Harsh's pipeline.
+       Returns UNAVAILABLE with limitation.
+    5. encounter_processing_status in (UNAVAILABLE, None) and encounters == []:
+       Conservative compatibility: grouping unavailable or legacy snapshot without metadata.
+       Returns UNAVAILABLE with limitation.
+    """
+    if snapshot.encounters:
+        return None
+
+    status = snapshot.metadata.encounter_processing_status
+
+    if status == EncounterProcessingStatus.COMPLETED:
+        # Completed with 0 encounters -> valid empty dataset
+        return None
+
+    applied_filters = (
+        _build_applied_filters(request)
+        if isinstance(request, AnalysisRequest)
+        else {"target_metric": request.target_metric.value}
+    )
+
+    if status == EncounterProcessingStatus.PENDING:
+        ctx.limit(
+            "Encounter grouping is PENDING / in-progress in Harsh's pipeline. "
+            "Encounter-dependent metrics are UNAVAILABLE until grouping completes."
+        )
+        return AnalysisResponseEnvelope(
+            status=ResponseStatus.UNAVAILABLE,
+            schema_version=CURRENT_SCHEMA_VERSION,
+            dataset_revision=snapshot.metadata.dataset_revision,
+            metric=metric if isinstance(metric, AnalysisMetric) else None,
+            applied_filters=applied_filters,
+            result=None,
+            limitations=ctx.limitations,
+            warnings=ctx.warnings,
+        )
+
+    if status == EncounterProcessingStatus.FAILED:
+        ctx.limit(
+            "Encounter grouping FAILED during pipeline execution in Harsh's pipeline. "
+            "Encounter-dependent metrics are UNAVAILABLE."
+        )
+        return AnalysisResponseEnvelope(
+            status=ResponseStatus.UNAVAILABLE,
+            schema_version=CURRENT_SCHEMA_VERSION,
+            dataset_revision=snapshot.metadata.dataset_revision,
+            metric=metric if isinstance(metric, AnalysisMetric) else None,
+            applied_filters=applied_filters,
+            result=None,
+            limitations=ctx.limitations,
+            warnings=ctx.warnings,
+        )
+
+    # status is UNAVAILABLE or None (legacy compatibility)
+    ctx.limit(
+        "No encounter records in snapshot. "
+        "Encounter-based metrics are UNAVAILABLE until Harsh's group_encounters() output "
+        "is included. (Conservative compatibility: missing metadata does not declare grouping complete)."
+    )
+    return AnalysisResponseEnvelope(
+        status=ResponseStatus.UNAVAILABLE,
+        schema_version=CURRENT_SCHEMA_VERSION,
+        dataset_revision=snapshot.metadata.dataset_revision,
+        metric=metric if isinstance(metric, AnalysisMetric) else None,
+        applied_filters=applied_filters,
+        result=None,
+        limitations=ctx.limitations,
+        warnings=ctx.warnings,
+    )
+
+
 # ---------------------------------------------------------------------------
 # PART F.1 — OVERVIEW
 # ---------------------------------------------------------------------------
@@ -534,13 +622,25 @@ def compute_overview(
 
     total_encounters = len(time_filtered_encounters)
     encounters_note = None
+    enc_status = snapshot.metadata.encounter_processing_status
     if not snapshot.encounters:
-        encounters_note = "No encounter records in snapshot; encounter count unavailable."
-        if source_mode == DataSourceMode.DATASET_REFERENCE:
-            encounters_note = (
-                "Dataset-reference mode: CCT annotations are image-level. "
-                "Encounter count requires Harsh's group_encounters() output applied to reference images."
-            )
+        if enc_status == EncounterProcessingStatus.COMPLETED:
+            total_encounters = 0
+            encounters_note = None
+        elif enc_status == EncounterProcessingStatus.PENDING:
+            total_encounters = None
+            encounters_note = "Encounter grouping is PENDING in Harsh's pipeline; encounter count unavailable."
+        elif enc_status == EncounterProcessingStatus.FAILED:
+            total_encounters = None
+            encounters_note = "Encounter grouping FAILED in Harsh's pipeline; encounter count unavailable."
+        else:
+            total_encounters = None
+            encounters_note = "No encounter records in snapshot; encounter count unavailable."
+            if source_mode == DataSourceMode.DATASET_REFERENCE:
+                encounters_note = (
+                    "Dataset-reference mode: CCT annotations are image-level. "
+                    "Encounter count requires Harsh's group_encounters() output applied to reference images."
+                )
 
     # Observation/image counts
     scoped_obs = [o for o in snapshot.observations if o.camera_id in scoped_camera_ids]
@@ -575,10 +675,11 @@ def compute_overview(
         else:
             classified += 1
 
+    has_enc_capability = bool(snapshot.encounters) or enc_status == EncounterProcessingStatus.COMPLETED
     result = OverviewResult(
         data_source_mode=source_mode.value,
-        counting_unit="encounter" if snapshot.encounters else "image/observation",
-        total_encounters=total_encounters if snapshot.encounters else None,
+        counting_unit="encounter" if has_enc_capability else "image/observation",
+        total_encounters=total_encounters if has_enc_capability else None,
         encounters_unavailable_reason=encounters_note,
         total_images_or_observations=len(scoped_obs),
         total_cameras_in_scope=len(scoped_camera_ids),
@@ -665,24 +766,17 @@ def compute_species_encounter_counts(
     source_mode = snapshot.metadata.data_source_mode
 
     if source_mode == DataSourceMode.DATASET_REFERENCE:
-        return _species_counts_reference_mode(snapshot, request, scoped_camera_ids, ctx)
+        ctx.warn(
+            "DEPRECATION: Calling 'species_encounter_counts' on dataset_reference data is deprecated. "
+            "Use 'reference_image_species_counts' instead. Reference counts reflect annotated images, not encounters."
+        )
+        return _species_counts_reference_mode(
+            snapshot, request, scoped_camera_ids, ctx, metric=AnalysisMetric.REFERENCE_IMAGE_SPECIES_COUNTS
+        )
 
-    if not snapshot.encounters:
-        ctx.limit(
-            "No encounter records in snapshot. "
-            "Encounter-based metrics are UNAVAILABLE until Harsh's group_encounters() output "
-            "is included. Do not infer encounters from image counts."
-        )
-        return AnalysisResponseEnvelope(
-            status=ResponseStatus.UNAVAILABLE,
-            schema_version=CURRENT_SCHEMA_VERSION,
-            dataset_revision=snapshot.metadata.dataset_revision,
-            metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
-            applied_filters=_build_applied_filters(request),
-            result=None,
-            limitations=ctx.limitations,
-            warnings=ctx.warnings,
-        )
+    enc_cap_err = _check_encounter_capability(snapshot, AnalysisMetric.SPECIES_ENCOUNTER_COUNTS, request, ctx)
+    if enc_cap_err:
+        return enc_cap_err
 
     # Build detection index
     det_map = {d.id: d for d in snapshot.detections}
@@ -814,6 +908,7 @@ def _species_counts_reference_mode(
     request: AnalysisRequest,
     scoped_camera_ids: set[str],
     ctx: FilterContext,
+    metric: AnalysisMetric = AnalysisMetric.REFERENCE_IMAGE_SPECIES_COUNTS,
 ) -> AnalysisResponseEnvelope:
     """
     Species counts for dataset_reference mode.
@@ -902,7 +997,7 @@ def _species_counts_reference_mode(
         status=status,
         schema_version=CURRENT_SCHEMA_VERSION,
         dataset_revision=snapshot.metadata.dataset_revision,
-        metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
+        metric=metric,
         applied_filters=_build_applied_filters(request),
         result=result,
         metric_units="annotated images (reference mode)",
@@ -949,23 +1044,10 @@ def compute_camera_comparison(
     det_map = {d.id: d for d in snapshot.detections}
     cam_map = {c.id: c for c in snapshot.cameras}
 
-    # Guard: encounter records are a prerequisite (Harsh's domain).
-    # Absent records → UNAVAILABLE (not INSUFFICIENT_DATA).
-    if not snapshot.encounters:
-        ctx.limit(
-            "No encounter records in snapshot. Camera comparison requires "
-            "Harsh's group_encounters() output. This capability is UNAVAILABLE "
-            "until encounters are provided."
-        )
-        return AnalysisResponseEnvelope(
-            status=ResponseStatus.UNAVAILABLE,
-            schema_version=CURRENT_SCHEMA_VERSION,
-            dataset_revision=snapshot.metadata.dataset_revision,
-            metric=AnalysisMetric.CAMERA_COMPARISON,
-            applied_filters=_build_applied_filters(request),
-            limitations=ctx.limitations,
-            warnings=ctx.warnings,
-        )
+    # Guard: encounter capability check
+    enc_cap_err = _check_encounter_capability(snapshot, AnalysisMetric.CAMERA_COMPARISON, request, ctx)
+    if enc_cap_err:
+        return enc_cap_err
 
     camera_to_encounters: dict[str, list] = defaultdict(list)
     for enc in snapshot.encounters:
@@ -1074,21 +1156,9 @@ def compute_daily_activity(
             "Set request.analysis_timezone to a valid IANA timezone for local-time daily grouping."
         )
 
-    if not snapshot.encounters:
-        ctx.limit(
-            "No encounter records in snapshot. Daily activity requires "
-            "Harsh's group_encounters() output. This capability is UNAVAILABLE "
-            "until encounters are provided."
-        )
-        return AnalysisResponseEnvelope(
-            status=ResponseStatus.UNAVAILABLE,
-            schema_version=CURRENT_SCHEMA_VERSION,
-            dataset_revision=snapshot.metadata.dataset_revision,
-            metric=AnalysisMetric.DAILY_ACTIVITY,
-            applied_filters=_build_applied_filters(request),
-            limitations=ctx.limitations,
-            warnings=ctx.warnings,
-        )
+    enc_cap_err = _check_encounter_capability(snapshot, AnalysisMetric.DAILY_ACTIVITY, request, ctx)
+    if enc_cap_err:
+        return enc_cap_err
 
     date_counts: dict[str, int] = defaultdict(int)
     missing_ts = 0
@@ -1182,21 +1252,9 @@ def compute_hourly_activity(
             "Specify request.analysis_timezone for local-time diurnal analysis."
         )
 
-    if not snapshot.encounters:
-        ctx.limit(
-            "No encounter records in snapshot. Hourly activity requires "
-            "Harsh's group_encounters() output. This capability is UNAVAILABLE "
-            "until encounters are provided."
-        )
-        return AnalysisResponseEnvelope(
-            status=ResponseStatus.UNAVAILABLE,
-            schema_version=CURRENT_SCHEMA_VERSION,
-            dataset_revision=snapshot.metadata.dataset_revision,
-            metric=AnalysisMetric.HOURLY_ACTIVITY,
-            applied_filters=_build_applied_filters(request),
-            limitations=ctx.limitations,
-            warnings=ctx.warnings,
-        )
+    enc_cap_err = _check_encounter_capability(snapshot, AnalysisMetric.HOURLY_ACTIVITY, request, ctx)
+    if enc_cap_err:
+        return enc_cap_err
 
     # Initialize all 24 bins to zero (zero ≠ unavailable)
     hour_counts: dict[str, int] = {f"{h:02d}": 0 for h in range(24)}
@@ -1273,21 +1331,9 @@ def compute_species_camera_matrix(
     ctx: FilterContext,
 ) -> AnalysisResponseEnvelope:
     """Part F.6: Species × camera count matrix."""
-    if not snapshot.encounters:
-        ctx.limit(
-            "No encounter records in snapshot. Species-camera matrix requires "
-            "Harsh's group_encounters() output. This capability is UNAVAILABLE "
-            "until encounters are provided."
-        )
-        return AnalysisResponseEnvelope(
-            status=ResponseStatus.UNAVAILABLE,
-            schema_version=CURRENT_SCHEMA_VERSION,
-            dataset_revision=snapshot.metadata.dataset_revision,
-            metric=AnalysisMetric.SPECIES_CAMERA_MATRIX,
-            applied_filters=_build_applied_filters(request),
-            limitations=ctx.limitations,
-            warnings=ctx.warnings,
-        )
+    enc_cap_err = _check_encounter_capability(snapshot, AnalysisMetric.SPECIES_CAMERA_MATRIX, request, ctx)
+    if enc_cap_err:
+        return enc_cap_err
 
     # Build species × camera set contributions
     species_camera: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
@@ -1402,21 +1448,9 @@ def compute_effort_normalised_rates(
             warnings=ctx.warnings,
         )
 
-    if not snapshot.encounters:
-        ctx.limit(
-            "No encounter records in snapshot. Effort-normalised rates require "
-            "Harsh's group_encounters() output. This capability is UNAVAILABLE "
-            "until encounters are provided."
-        )
-        return AnalysisResponseEnvelope(
-            status=ResponseStatus.UNAVAILABLE,
-            schema_version=CURRENT_SCHEMA_VERSION,
-            dataset_revision=snapshot.metadata.dataset_revision,
-            metric=AnalysisMetric.EFFORT_NORMALISED_RATES,
-            applied_filters=_build_applied_filters(request),
-            limitations=ctx.limitations,
-            warnings=ctx.warnings,
-        )
+    enc_cap_err = _check_encounter_capability(snapshot, AnalysisMetric.EFFORT_NORMALISED_RATES, request, ctx)
+    if enc_cap_err:
+        return enc_cap_err
 
     # Build effort index: camera_id → sorted list of (start, end) intervals
     effort_by_camera: dict[str, list[tuple[datetime, datetime]]] = defaultdict(list)
@@ -1636,6 +1670,21 @@ def analyze(
         return compute_overview(snapshot, request, labels, scoped_camera_ids, ctx)
     if metric == AnalysisMetric.SPECIES_ENCOUNTER_COUNTS:
         return compute_species_encounter_counts(snapshot, request, labels, scoped_camera_ids, ctx)
+    if metric == AnalysisMetric.REFERENCE_IMAGE_SPECIES_COUNTS:
+        if snapshot.metadata.data_source_mode != DataSourceMode.DATASET_REFERENCE:
+            ctx.limit("REFERENCE_IMAGE_SPECIES_COUNTS is only valid on dataset_reference snapshots.")
+            return AnalysisResponseEnvelope(
+                status=ResponseStatus.UNAVAILABLE,
+                schema_version=CURRENT_SCHEMA_VERSION,
+                dataset_revision=snapshot.metadata.dataset_revision,
+                metric=metric,
+                applied_filters=_build_applied_filters(request),
+                limitations=ctx.limitations,
+                warnings=ctx.warnings,
+            )
+        return _species_counts_reference_mode(
+            snapshot, request, scoped_camera_ids, ctx, metric=AnalysisMetric.REFERENCE_IMAGE_SPECIES_COUNTS
+        )
     if metric == AnalysisMetric.CAMERA_COMPARISON:
         return compute_camera_comparison(snapshot, request, labels, scoped_camera_ids, ctx)
     if metric == AnalysisMetric.DAILY_ACTIVITY:
@@ -1663,59 +1712,8 @@ def rank_review(
     request: ReviewRankingRequest,
 ) -> AnalysisResponseEnvelope:
     """
-    rank_review() is explicitly unavailable until Phase 3.
-    Phase 2 implements analyze() only.
+    Phase 3: Conclusion-sensitive review ranking entry point (Feature F18).
+    Evaluates candidate detections by their marginal sensitivity on the target metric.
     """
-    snap_report = validate_snapshot_data(snapshot)
-    if not snap_report.is_valid:
-        return AnalysisResponseEnvelope(
-            status=ResponseStatus.INVALID_REQUEST,
-            schema_version=CURRENT_SCHEMA_VERSION,
-            dataset_revision=snapshot.metadata.dataset_revision,
-            metric=request.target_metric,
-            applied_filters={"target_metric": request.target_metric.value},
-            errors=snap_report.errors,
-            warnings=snap_report.warnings,
-            limitations=["Snapshot failed contract validation."],
-        )
-
-    if (
-        request.expected_revision is not None
-        and request.expected_revision != snapshot.metadata.dataset_revision
-    ):
-        return AnalysisResponseEnvelope(
-            status=ResponseStatus.INVALID_REQUEST,
-            schema_version=CURRENT_SCHEMA_VERSION,
-            dataset_revision=snapshot.metadata.dataset_revision,
-            metric=request.target_metric,
-            applied_filters={"expected_revision": request.expected_revision},
-            errors=[
-                ValidationErrorDetail(
-                    code=ValidationErrorCode.SCHEMA_VIOLATION,
-                    message=(
-                        f"Expected revision {request.expected_revision} does not match "
-                        f"snapshot dataset revision {snapshot.metadata.dataset_revision}."
-                    ),
-                    field_path="expected_revision",
-                )
-            ],
-            limitations=["Dataset revision conflict (optimistic lock mismatch)."],
-        )
-
-    return AnalysisResponseEnvelope(
-        status=ResponseStatus.UNAVAILABLE,
-        schema_version=CURRENT_SCHEMA_VERSION,
-        dataset_revision=snapshot.metadata.dataset_revision,
-        metric=request.target_metric,
-        applied_filters={
-            "target_metric": request.target_metric.value,
-            "top_k_candidates": request.top_k_candidates,
-            "score_margin_threshold": request.score_margin_threshold,
-        },
-        warnings=snap_report.warnings,
-        limitations=[
-            "Conclusion-sensitive review ranking is deferred to Phase 3.",
-            "Phase 2 implements analyze() only. rank_review() remains explicitly unavailable.",
-            "No fabricated priority rankings are returned.",
-        ],
-    )
+    from wildscope_analytics.ranking import compute_review_ranking
+    return compute_review_ranking(snapshot, request)

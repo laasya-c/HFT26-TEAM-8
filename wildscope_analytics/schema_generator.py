@@ -21,7 +21,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from wildscope_analytics.contracts.entities import DatasetReferenceAnnotation
 from wildscope_analytics.contracts.requests import AnalysisRequest, ReviewRankingRequest
-from wildscope_analytics.contracts.responses import AnalysisResponseEnvelope
+from wildscope_analytics.contracts.responses import (
+    AnalysisResponseEnvelope,
+    ReviewRankingResult,
+)
 from wildscope_analytics.contracts.snapshot import Snapshot
 
 
@@ -40,6 +43,7 @@ def export_schemas(output_dir: Path | str | None = None) -> list[Path]:
         ("review_ranking_request.schema.json", ReviewRankingRequest),
         ("analysis_response.schema.json", AnalysisResponseEnvelope),
         ("dataset_reference_annotation.schema.json", DatasetReferenceAnnotation),
+        ("review_ranking_result.schema.json", ReviewRankingResult),
     ]
 
     exported_paths = []

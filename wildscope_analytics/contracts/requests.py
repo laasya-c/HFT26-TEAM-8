@@ -138,3 +138,58 @@ class ReviewRankingRequest(BaseContractModel):
         ge=0,
         description="Expected dataset revision for consistency."
     )
+    target_species_id: str | None = Field(
+        default=None,
+        description="Focal species for sensitivity ranking (e.g. for SPECIES_ENCOUNTER_COUNTS or CAMERA_COMPARISON)."
+    )
+    camera_id_a: str | None = Field(
+        default=None,
+        description="First camera identifier for CAMERA_COMPARISON difference metric (camera_a - camera_b)."
+    )
+    camera_id_b: str | None = Field(
+        default=None,
+        description="Second camera identifier for CAMERA_COMPARISON difference metric (camera_a - camera_b)."
+    )
+    start_time: datetime | None = Field(
+        default=None,
+        description="Start of analysis time window (must be timezone-aware if given)."
+    )
+    end_time: datetime | None = Field(
+        default=None,
+        description="End of analysis time window (must be timezone-aware if given)."
+    )
+    analysis_timezone: str | None = Field(
+        default=None,
+        description="IANA timezone identifier."
+    )
+    include_zero_impact: bool = Field(
+        default=False,
+        description="Whether to include candidates whose maximum absolute marginal impact is 0."
+    )
+    parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Metric-specific documented configuration parameters."
+    )
+
+    @field_validator("start_time")
+    @classmethod
+    def validate_ranking_start_tz(cls, v: datetime | None) -> datetime | None:
+        if v is not None and (v.tzinfo is None or v.tzinfo.utcoffset(v) is None):
+            raise ValueError("start_time must be timezone-aware if provided.")
+        return v
+
+    @field_validator("end_time")
+    @classmethod
+    def validate_ranking_end_tz(cls, v: datetime | None) -> datetime | None:
+        if v is not None and (v.tzinfo is None or v.tzinfo.utcoffset(v) is None):
+            raise ValueError("end_time must be timezone-aware if provided.")
+        return v
+
+    @model_validator(mode="after")
+    def validate_ranking_window(self) -> ReviewRankingRequest:
+        if self.start_time is not None and self.end_time is not None:
+            if self.start_time > self.end_time:
+                raise ValueError(
+                    f"start_time ({self.start_time}) cannot be later than end_time ({self.end_time})."
+                )
+        return self

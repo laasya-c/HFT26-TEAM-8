@@ -5,6 +5,7 @@
       "enum": [
         "overview",
         "species_encounter_counts",
+        "reference_image_species_counts",
         "camera_comparison",
         "daily_activity",
         "hourly_activity",
@@ -110,6 +111,98 @@
       "default": null,
       "description": "Expected dataset revision for consistency.",
       "title": "Expected Revision"
+    },
+    "target_species_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Focal species for sensitivity ranking (e.g. for SPECIES_ENCOUNTER_COUNTS or CAMERA_COMPARISON).",
+      "title": "Target Species Id"
+    },
+    "camera_id_a": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "First camera identifier for CAMERA_COMPARISON difference metric (camera_a - camera_b).",
+      "title": "Camera Id A"
+    },
+    "camera_id_b": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Second camera identifier for CAMERA_COMPARISON difference metric (camera_a - camera_b).",
+      "title": "Camera Id B"
+    },
+    "start_time": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Start of analysis time window (must be timezone-aware if given).",
+      "title": "Start Time"
+    },
+    "end_time": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "End of analysis time window (must be timezone-aware if given).",
+      "title": "End Time"
+    },
+    "analysis_timezone": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "IANA timezone identifier.",
+      "title": "Analysis Timezone"
+    },
+    "include_zero_impact": {
+      "default": false,
+      "description": "Whether to include candidates whose maximum absolute marginal impact is 0.",
+      "title": "Include Zero Impact",
+      "type": "boolean"
+    },
+    "parameters": {
+      "additionalProperties": true,
+      "description": "Metric-specific documented configuration parameters.",
+      "title": "Parameters",
+      "type": "object"
     }
   },
   "required": [

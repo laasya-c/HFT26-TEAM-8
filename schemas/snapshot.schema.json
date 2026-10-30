@@ -451,6 +451,17 @@
       "title": "Encounter",
       "type": "object"
     },
+    "EncounterProcessingStatus": {
+      "description": "Status of encounter grouping processing in the vision/clustering pipeline (Harsh).\nExplicitly distinguishes whether encounter grouping is available, pending, completed, or failed.",
+      "enum": [
+        "unavailable",
+        "pending",
+        "completed",
+        "failed"
+      ],
+      "title": "EncounterProcessingStatus",
+      "type": "string"
+    },
     "MediaAsset": {
       "additionalProperties": false,
       "description": "Source raw media file (image or video) stored in object/file storage.",
@@ -1035,7 +1046,7 @@
       "description": "Metadata describing snapshot provenance, structural schema version,\nand underlying transactional data revision.",
       "properties": {
         "schema_version": {
-          "default": "1.1.0",
+          "default": "1.2.0",
           "description": "Semantic version of the data contract schema.",
           "title": "Schema Version",
           "type": "string"
@@ -1096,6 +1107,18 @@
           "$ref": "#/$defs/ReviewOrderingMechanism",
           "default": "backend_revision",
           "description": "Phase 2: documents how multiple ReviewEvents for the same detection target are ordered when resolving effective labels. backend_revision requires Santosh to supply a per-event sequence_number field."
+        },
+        "encounter_processing_status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EncounterProcessingStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Phase 3: status of encounter grouping processing (Harsh's group_encounters). When None (legacy 1.0.0/1.1.0 snapshot), conservative compatibility treats an empty encounters list as UNAVAILABLE."
         }
       },
       "required": [

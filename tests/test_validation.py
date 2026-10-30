@@ -310,17 +310,20 @@ class TestIntegrationEntryPoints:
         assert response.status == ResponseStatus.INVALID_REQUEST
         assert any("revision" in err.message.lower() for err in response.errors)
 
-    def test_rank_review_on_valid_snapshot_returns_honest_unavailable(self):
-        """rank_review() remains UNAVAILABLE until Phase 3."""
+    def test_rank_review_on_valid_snapshot_executes_phase3(self):
+        """Phase 3: rank_review() produces real conclusion-sensitive ranking result."""
         valid_path = EXAMPLES_DIR / "valid_snapshot.json"
         snapshot, _ = load_and_validate_snapshot(valid_path)
         assert snapshot is not None
 
         req = ReviewRankingRequest(
             target_metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
+            target_species_id="panthera_tigris",
             expected_revision=snapshot.metadata.dataset_revision,
         )
         response = rank_review(snapshot, req)
-        assert response.status == ResponseStatus.UNAVAILABLE
-        assert response.result is None
-        assert any("Phase 3" in lim for lim in response.limitations)
+        assert response.status in (ResponseStatus.OK, ResponseStatus.PARTIAL)
+        assert response.result is not None
+        assert response.result["target_metric"] == AnalysisMetric.SPECIES_ENCOUNTER_COUNTS.value
+        assert response.result["target_species_id"] == "panthera_tigris"
+        assert response.dataset_revision == snapshot.metadata.dataset_revision

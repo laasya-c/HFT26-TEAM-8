@@ -5,6 +5,7 @@
       "enum": [
         "overview",
         "species_encounter_counts",
+        "reference_image_species_counts",
         "camera_comparison",
         "daily_activity",
         "hourly_activity",

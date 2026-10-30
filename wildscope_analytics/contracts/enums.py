@@ -92,6 +92,7 @@ class AnalysisMetric(StrEnum):
     """
     OVERVIEW = "overview"
     SPECIES_ENCOUNTER_COUNTS = "species_encounter_counts"
+    REFERENCE_IMAGE_SPECIES_COUNTS = "reference_image_species_counts"
     CAMERA_COMPARISON = "camera_comparison"
     DAILY_ACTIVITY = "daily_activity"
     HOURLY_ACTIVITY = "hourly_activity"
@@ -116,6 +117,17 @@ class PredictionStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     PARTIAL = "partial"
+
+
+class EncounterProcessingStatus(StrEnum):
+    """
+    Status of encounter grouping processing in the vision/clustering pipeline (Harsh).
+    Explicitly distinguishes whether encounter grouping is available, pending, completed, or failed.
+    """
+    UNAVAILABLE = "unavailable"    # Capability not configured/supported in this deployment
+    PENDING = "pending"            # Pipeline execution has not yet run or is in-progress
+    COMPLETED = "completed"        # Pipeline completed (even if 0 encounters resulted)
+    FAILED = "failed"              # Pipeline failed during grouping execution
 
 
 class DataSourceMode(StrEnum):
@@ -173,3 +185,4 @@ class ValidationErrorCode(StrEnum):
     CONFLICTING_REVIEW = "CONFLICTING_REVIEW"
     DATASET_SOURCE_MISMATCH = "DATASET_SOURCE_MISMATCH"
     MISSING_ENCOUNTER_SUPPORT = "MISSING_ENCOUNTER_SUPPORT"
+    INVALID_RANKING_TARGET = "INVALID_RANKING_TARGET"

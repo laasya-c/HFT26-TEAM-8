@@ -102,3 +102,61 @@ class AnalysisResponseEnvelope(BaseContractModel, Generic[T]):
         default_factory=list,
         description="Structured error details if status is INVALID_REQUEST or validation failed."
     )
+
+
+class EvaluatedAlternative(BaseContractModel):
+    """Evaluation of one candidate alternative outcome on the target metric."""
+    taxon_id: str = Field(..., description="Hypothetical alternative taxon/label.")
+    alternative_score: float | None = Field(default=None, description="Model score/confidence for this alternative if provided.")
+    counterfactual_value: float = Field(..., description="Target metric value if this alternative were confirmed.")
+    signed_delta: float = Field(..., description="Signed change from baseline (counterfactual - baseline).")
+    absolute_delta: float = Field(..., description="Absolute magnitude of change (|counterfactual - baseline|).")
+    impact_summary: str = Field(..., description="Concise human-readable impact description.")
+
+
+class RankedCandidateResult(BaseContractModel):
+    """Ranked review candidate with counterfactual evaluations."""
+    rank: int = Field(..., ge=1, description="Priority rank (1 = highest impact).")
+    detection_id: str = Field(..., description="ID of the candidate Detection.")
+    encounter_id: str = Field(..., description="ID of the Encounter containing this detection.")
+    observation_id: str = Field(..., description="ID of parent Observation.")
+    camera_id: str = Field(..., description="ID of the physical Camera trap.")
+    current_effective_label: str | None = Field(default=None, description="Current effective taxon label before review.")
+    current_prediction: str | None = Field(default=None, description="Original predicted taxon ID.")
+    current_confidence: float | None = Field(default=None, description="Model confidence for current prediction.")
+    score_type: str | None = Field(default=None, description="Score type of model prediction.")
+    alternatives_evaluated: list[EvaluatedAlternative] = Field(
+        default_factory=list,
+        description="Evaluated alternative outcomes."
+    )
+    max_absolute_impact: float = Field(..., description="Maximum absolute change in target metric across alternatives.")
+    explanation: str = Field(..., description="Deterministic explanation of why this candidate is prioritized.")
+
+
+class ReviewRankingResult(BaseContractModel):
+    """Complete typed payload for conclusion-sensitive review ranking."""
+    target_metric: str = Field(..., description="Metric whose sensitivity guided review priority.")
+    target_species_id: str | None = Field(default=None, description="Focal species for scalar metric.")
+    metric_units: str = Field(..., description="Units of the evaluated metric.")
+    baseline_value: float = Field(..., description="Baseline value of target metric prior to review.")
+    camera_id_a: str | None = Field(default=None, description="Camera A for comparison metric.")
+    camera_id_b: str | None = Field(default=None, description="Camera B for comparison metric.")
+    total_detections_in_scope: int = Field(..., description="Total detections in scope.")
+    eligible_candidates_count: int = Field(..., description="Detections meeting review eligibility.")
+    ranked_candidates_count: int = Field(..., description="Count of returned ranked candidates.")
+    excluded_candidates_count: int = Field(..., description="Detections evaluated but excluded (e.g. resolved, zero-impact).")
+    candidates: list[RankedCandidateResult] = Field(default_factory=list, description="Ranked review candidates.")
+    marginal_analysis_disclaimer: str = Field(
+        default=(
+            "One-candidate-at-a-time marginal sensitivity analysis. Does NOT represent a joint uncertainty interval. "
+            "Changes from multiple candidates are not additive due to encounter deduplication."
+        ),
+        description="Methodological limitations of marginal sensitivity ranking."
+    )
+    note: str = Field(
+        default=(
+            "Ranking priority is deterministically computed based on potential impact on the selected metric. "
+            "This does not invent probabilities, write review events, or assert alternative labels are true."
+        ),
+        description="Operational context for reviewers."
+    )

@@ -5,6 +5,7 @@
       "enum": [
         "overview",
         "species_encounter_counts",
+        "reference_image_species_counts",
         "camera_comparison",
         "daily_activity",
         "hourly_activity",
@@ -49,7 +50,8 @@
         "AMBIGUOUS_REVIEW_ORDER",
         "CONFLICTING_REVIEW",
         "DATASET_SOURCE_MISMATCH",
-        "MISSING_ENCOUNTER_SUPPORT"
+        "MISSING_ENCOUNTER_SUPPORT",
+        "INVALID_RANKING_TARGET"
       ],
       "title": "ValidationErrorCode",
       "type": "string"
@@ -124,7 +126,7 @@
       "description": "Operational status of the response."
     },
     "schema_version": {
-      "default": "1.1.0",
+      "default": "1.2.0",
       "description": "Schema contract version.",
       "title": "Schema Version",
       "type": "string"
