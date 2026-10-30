@@ -32,6 +32,7 @@ from wildscope_analytics.contracts.enums import (
     InclusionPolicy,
     ResponseStatus,
     ReviewDecision,
+    ScoreType,
     ValidationErrorCode,
 )
 from wildscope_analytics.contracts.requests import ReviewRankingRequest
@@ -256,16 +257,22 @@ def compute_review_ranking(
             continue
         in_scope_encounters.append(enc)
 
+    det_map = {d.id: d for d in snapshot.detections}
+
     # Determine which in-scope encounters contain target_species_id under baseline
     # An encounter contains target species if AT LEAST ONE eligible detection has effective label == target_species_id
     def _encounter_has_species(enc: Encounter, active_labels: dict[str, Any]) -> bool:
         for d_id in enc.member_detection_ids:
-            lbl = active_labels.get(d_id)
-            if lbl and not lbl.is_rejected and not lbl.is_empty and not lbl.is_unresolved:
-                if request.inclusion_policy == InclusionPolicy.REVIEWED_ONLY and lbl.review_id is None:
+            if not _is_detection_eligible(d_id, active_labels, request):
+                continue
+            det = det_map.get(d_id)
+            if request.min_confidence > 0.0 and det:
+                conf = det.classification_confidence
+                if conf is not None and conf < request.min_confidence:
                     continue
-                if lbl.taxon_id == target_species_id:
-                    return True
+            lbl = active_labels.get(d_id)
+            if lbl and lbl.taxon_id == target_species_id:
+                return True
         return False
 
     baseline_enc_has_target: dict[str, bool] = {
@@ -298,11 +305,20 @@ def compute_review_ranking(
         d_id for enc in snapshot.encounters for d_id in enc.member_detection_ids
     }
 
+    effective_result_limit = request.result_limit or request.max_records_to_rank or 50
+    evaluation_limit = request.evaluation_limit
+    evaluation_policy = request.evaluation_policy or "all_eligible"
+    is_evaluation_bounded = False
+
     evaluated_candidates: list[tuple[float, str, RankedCandidateResult]] = []
     total_detections_in_scope = 0
     excluded_candidates_count = 0
 
     for det in snapshot.detections:
+        if evaluation_limit is not None and len(evaluated_candidates) >= evaluation_limit:
+            is_evaluation_bounded = True
+            break
+
         lbl = labels.get(det.id)
         if lbl is None:
             ctx.exclude("Detection not resolved in snapshot")
@@ -343,21 +359,35 @@ def compute_review_ranking(
             excluded_candidates_count += 1
             continue
 
-        # Check ambiguity margin threshold
+        # Check ambiguity margin threshold:
+        # Strictly compares species-classification confidence with alternative species scores from the same score space.
+        # NEVER compares animal_detection_confidence with species classification scores.
+        # Missing or incomparable scores produce explicit eligibility handling, not an invented margin.
         conf = det.classification_confidence
+        score_is_comparable_prob = (
+            det.score_type in (ScoreType.SOFTMAX, ScoreType.PROBABILITY, ScoreType.CALIBRATED)
+        )
+
         if (
             conf is not None
+            and score_is_comparable_prob
             and det.alternatives
             and request.score_margin_threshold < 1.0
-            and conf >= (1.0 - request.score_margin_threshold)
             and lbl.decision != ReviewDecision.FLAG_FOR_EXPERT.value
         ):
-            sorted_alts = sorted(det.alternatives, key=lambda a: a.score, reverse=True)
-            top_alt_score = sorted_alts[0].score if sorted_alts else 0.0
-            margin = conf - top_alt_score
-            if margin > request.score_margin_threshold:
-                excluded_candidates_count += 1
-                continue
+            valid_alt_scores = [
+                a.score for a in det.alternatives
+                if a.score is not None and not math.isnan(a.score)
+            ]
+            if valid_alt_scores:
+                top_alt_score = max(valid_alt_scores)
+                margin = conf - top_alt_score
+                if margin > request.score_margin_threshold:
+                    # Clear species margin in comparable score space; excluded from ambiguous queue
+                    excluded_candidates_count += 1
+                    continue
+        # If conf is None or score_type is RAW/incomparable, we do not invent a margin (e.g. conf - 0.0).
+        # The candidate remains explicitly eligible as an uncertain/uncalibrated prediction.
 
         # Extract distinct alternative candidate outcomes
         seen_taxa = {lbl.taxon_id}
@@ -400,6 +430,16 @@ def compute_review_ranking(
                 other_has = any(
                     d_id != det.id
                     and _is_detection_eligible(d_id, labels, request)
+                    and (
+                        request.min_confidence == 0.0
+                        or (
+                            det_map.get(d_id) is not None
+                            and (
+                                det_map[d_id].classification_confidence is None
+                                or det_map[d_id].classification_confidence >= request.min_confidence
+                            )
+                        )
+                    )
                     and labels[d_id].taxon_id == target_species_id
                     for d_id in enc.member_detection_ids
                 )
@@ -500,9 +540,8 @@ def compute_review_ranking(
     # Sort key: (-max_impact, detection_id ascending)
     filtered_for_ranking.sort(key=lambda item: (-item[0], item[1]))
 
-    # Truncate by max_records_to_rank
-    is_truncated = len(filtered_for_ranking) > request.max_records_to_rank
-    returned_candidates_raw = filtered_for_ranking[:request.max_records_to_rank]
+    # Apply result_limit (top-k returned; requesting fewer results does NOT mark response partial)
+    returned_candidates_raw = filtered_for_ranking[:effective_result_limit]
 
     final_candidates: list[RankedCandidateResult] = []
     for rank_idx, (_, _, cand) in enumerate(returned_candidates_raw, start=1):
@@ -527,11 +566,17 @@ def compute_review_ranking(
         eligible_candidates_count=eligible_candidates_count,
         ranked_candidates_count=len(final_candidates),
         excluded_candidates_count=excluded_candidates_count,
+        result_limit=effective_result_limit,
+        evaluation_limit=evaluation_limit,
+        evaluation_policy=evaluation_policy,
+        is_evaluation_bounded=is_evaluation_bounded,
         candidates=final_candidates,
     )
 
+    # Status: only PARTIAL if evaluation_limit bounded coverage or genuine excluded records exist.
+    # Requesting fewer top results via result_limit does NOT mark an otherwise complete response as partial.
     status = ResponseStatus.OK
-    if is_truncated or ctx.excluded_count > 0:
+    if is_evaluation_bounded or ctx.excluded_count > 0:
         status = ResponseStatus.PARTIAL
 
     applied_filters = {
@@ -541,8 +586,12 @@ def compute_review_ranking(
         "camera_id_b": camera_b,
         "top_k_candidates": request.top_k_candidates,
         "score_margin_threshold": request.score_margin_threshold,
-        "max_records_to_rank": request.max_records_to_rank,
+        "result_limit": effective_result_limit,
+        "max_records_to_rank": effective_result_limit,
+        "evaluation_limit": evaluation_limit,
+        "evaluation_policy": evaluation_policy,
         "include_zero_impact": request.include_zero_impact,
+        "min_confidence": request.min_confidence,
         "start_time": request.start_time.isoformat() if request.start_time else None,
         "end_time": request.end_time.isoformat() if request.end_time else None,
     }
@@ -552,9 +601,10 @@ def compute_review_ranking(
         "Changes from multiple candidates are NOT additive due to encounter deduplication.",
         "Prioritization reflects potential impact on the selected metric only; not an intrinsic classification quality score.",
     ]
-    if is_truncated:
+    if is_evaluation_bounded:
         limitations.append(
-            f"Results truncated to top {request.max_records_to_rank} records by max_records_to_rank."
+            f"Incomplete ranking coverage: candidate evaluation was bounded to {evaluation_limit} "
+            f"records under policy '{evaluation_policy}'. Remaining candidate detections remain unranked."
         )
 
     return AnalysisResponseEnvelope(

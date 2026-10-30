@@ -84,19 +84,69 @@
     },
     "score_margin_threshold": {
       "default": 0.25,
-      "description": "Ambiguity margin threshold between top predictions triggering review.",
+      "description": "Ambiguity margin threshold between top species prediction and highest alternative species score (default: 0.25). Detections with margin > threshold in probability score space are considered unambiguous and excluded from the candidate queue unless explicitly flagged for expert review.",
       "maximum": 1.0,
       "minimum": 0.0,
       "title": "Score Margin Threshold",
       "type": "number"
     },
+    "result_limit": {
+      "anyOf": [
+        {
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Maximum number of top-ranked results to return after evaluating all eligible candidates (default: 50). Fewer requested results does NOT mark an otherwise complete response as partial.",
+      "title": "Result Limit"
+    },
     "max_records_to_rank": {
-      "default": 50,
-      "description": "Maximum prioritized records returned in response.",
-      "maximum": 500,
-      "minimum": 1,
-      "title": "Max Records To Rank",
-      "type": "integer"
+      "anyOf": [
+        {
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Backward-compatible alias for result_limit.",
+      "title": "Max Records To Rank"
+    },
+    "evaluation_limit": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Evaluate only a bounded subset of candidate detections during simulation. Applying this limit produces incomplete ranking coverage and sets status to PARTIAL.",
+      "title": "Evaluation Limit"
+    },
+    "evaluation_policy": {
+      "default": "all_eligible",
+      "description": "Selection policy when evaluation_limit is set (e.g. 'all_eligible', 'time_order').",
+      "title": "Evaluation Policy",
+      "type": "string"
+    },
+    "min_confidence": {
+      "default": 0.0,
+      "description": "Minimum detection/classification confidence cutoff for baseline metric parity.",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Min Confidence",
+      "type": "number"
     },
     "expected_revision": {
       "anyOf": [

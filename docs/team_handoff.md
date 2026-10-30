@@ -5,7 +5,7 @@
 > **Status:** Complete. Both `analyze()` and `rank_review()` are fully implemented and verified.
 > **Schema version:** `1.2.0` (fully backward-compatible with `1.1.0` and `1.0.0`)
 > **Branch:** `shravan`
-> **Test Suite:** **150 passed, 1 skipped** (Caltech real integration test skipped due to sandbox network isolation)
+> **Test Suite:** **166 passed, 1 skipped** (Caltech real integration test skipped due to sandbox network isolation)
 
 ---
 
@@ -20,7 +20,7 @@
 | Encounter Capability | Implicit (`encounters == []`) | Inferred from presence | **Explicit metadata** via `EncounterProcessingStatus` (`COMPLETED`, `PENDING`, `FAILED`, `UNAVAILABLE`) |
 | Reference Metric Units | Masked as encounters | Documented distinction | **Dedicated metric** `reference_image_species_counts`; deprecation warning on `species_encounter_counts` |
 | Review Ordering | Clock timestamps only | `ReviewEvent.sequence_number` | Full regression safety: ambiguous conflicts excluded with explicit reporting |
-| Tests Passing | 38 | 117 passing (1 skipped) | **150 passing, 1 skipped** (real Caltech integration pending manual download) |
+| Tests Passing | 38 | 117 passing (1 skipped) | **166 passing, 1 skipped** (real Caltech integration pending manual download) |
 
 ---
 
@@ -112,27 +112,33 @@ Ranking & Deduplication
   ├── Filter zero impact (unless include_zero_impact=True)
   ├── Sort by max_absolute_impact descending
   ├── Stable tie-break by detection_id ascending
-  └── Truncate to max_records_to_rank (status=partial if truncated)
+  └── Return top-k by result_limit (complete response, status=ok)
         │
         ▼
 AnalysisResponseEnvelope (Typed ReviewRankingResult payload)
 ```
 
-### 3.2 Candidate Eligibility Rules
+### 3.2 Candidate Eligibility & Score Space Rules
 A Detection is eligible for conclusion-sensitive review ranking if and only if:
 1. **Operational Inference:** Snapshot mode is `operational_prediction`.
 2. **In-Scope Encounter:** Belongs to an encounter matching the requested cameras and time window.
 3. **Unresolved Triage State:** Not previously resolved by human review (`CONFIRM_SPECIES`, `CORRECT_SPECIES`, `MARK_UNKNOWN`, or `REJECT_DETECTION`).
 4. **Honest Documented Alternatives:** Possesses alternative candidate taxa from the vision classifier (`alternatives` list). If parameters `allow_unknown_alternative` or `allow_rejection_alternative` are enabled, synthetic review outcomes `__unknown__` and `__rejected__` are also evaluated.
-5. **Ambiguity Margin:** Either flagged for expert (`FLAG_FOR_EXPERT`) or model confidence margin is within `score_margin_threshold`:
-   $$\text{confidence} - \text{top\_alternative\_score} \le \text{score\_margin\_threshold}$$
+5. **Score Space & Ambiguity Margin Threshold:**
+   - **Default Threshold:** `score_margin_threshold = 0.25` in $[0.0, 1.0]$.
+   - **Score Space Integrity:** Margin is computed strictly between species classification confidence (`classification_confidence`) and alternative species scores from the same classifier score space. It **never** compares animal detection confidence (`animal_detection_confidence`) with species scores.
+   - **Missing or Incomparable Scores:** If `classification_confidence` is missing (`None`) or `score_type` is uncalibrated raw logits (`ScoreType.RAW`), a probability margin cannot be computed. Rather than inventing an artificial margin, the candidate is handled explicitly as uncertain and **remains eligible** for review.
+   - **Unambiguous Exclusion:** When comparable probability scores exist and candidate is not flagged for expert (`FLAG_FOR_EXPERT`), candidates with $\text{classification\_confidence} - \text{top\_alt\_score} > \text{score\_margin\_threshold}$ are excluded as unambiguous.
 
-### 3.3 Encounter Deduplication Preservation
-WildScope groups multiple detections into encounters. If an encounter contains Detection 1 (Bobcat) and Detection 2 (predicted Coyote with Bobcat alternative):
-- Changing Detection 2 to Bobcat does **not** increase the encounter count because the encounter is already established as a Bobcat encounter by Detection 1.
-- In this situation, Detection 2's marginal impact is **0.0**. By default, zero-impact candidates are filtered out of the review queue (unless `include_zero_impact=True` is requested).
+### 3.3 Result Limit vs Evaluation Limit Separation
+- **`result_limit` (or `max_records_to_rank`, default: 50):** The engine evaluates all eligible candidates in scope, then returns the top-k highest-impact results. Requesting fewer results does **NOT** mark an otherwise complete response as `partial`.
+- **`evaluation_limit` (default: None):** Bounding parameter to cap simulation cost (e.g. evaluating only the first $N$ candidates). When applied, the engine reports incomplete ranking coverage and `evaluation_policy` in limitations, and marks the response status as `partial`.
 
-### 3.4 Non-Additive Marginal Sensitivity Disclaimer & Counterexample
+### 3.4 Encounter Deduplication & Baseline Parity with analyze()
+- **Baseline Parity:** `rank_review()` computes baseline values using the exact same filtering, encounter timestamps, detection eligibility, and `min_confidence` rules as `analyze()`. For identical parameters, `rank_review().baseline_value` is verified to match `analyze()` counts to the exact integer.
+- **Encounter Deduplication Preservation:** If an encounter already contains Detection 1 (confirmed Bobcat), relabelling Detection 2 to Bobcat does **not** increase encounter count. Its marginal impact is evaluated as `0.0` and filtered out by default (unless `include_zero_impact=True`).
+
+### 3.5 Non-Additive Marginal Sensitivity Disclaimer & Counterexample
 > [!IMPORTANT]
 > Marginal sensitivity is computed **one candidate at a time**. Marginal changes from individual candidates **CANNOT be summed** to predict the effect of reviewing multiple detections jointly.
 

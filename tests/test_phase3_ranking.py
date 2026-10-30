@@ -50,9 +50,11 @@ from wildscope_analytics import (
     TaxonAlternative,
     TriageState,
     analyze,
+    load_and_validate_snapshot,
     rank_review,
 )
-from wildscope_analytics.contracts.enums import ReviewOrderingMechanism
+from wildscope_analytics.contracts.entities import MonitoringEffort, TimeInterval
+from wildscope_analytics.contracts.enums import ReviewOrderingMechanism, ScoreType
 
 UTC = timezone.utc
 SYNTHETIC = "SYNTHETIC TEST FIXTURE"
@@ -758,8 +760,8 @@ class TestConclusionSensitiveRanking:
         assert res.candidates[1].detection_id == "det_Z"
         assert res.candidates[1].rank == 2
 
-    def test_max_records_to_rank_truncation_sets_partial(self):
-        """When candidate count exceeds max_records_to_rank, results are truncated and status is PARTIAL."""
+    def test_result_limit_returns_ok_not_partial(self):
+        """Requesting fewer results via result_limit does NOT mark an otherwise complete response partial."""
         cam = _cam("cam_01")
         m1 = _media("med_01", "cam_01")
         m2 = _media("med_02", "cam_01")
@@ -774,18 +776,50 @@ class TestConclusionSensitiveRanking:
             cameras=[cam], media_assets=[m1, m2], observations=[o1, o2],
             detections=[det_1, det_2], encounters=[enc_1, enc_2],
         )
-        # Limit to 1 record
+        # Limit to 1 result via result_limit
         req = ReviewRankingRequest(
             target_metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
             target_species_id="lynx_rufus",
-            max_records_to_rank=1,
+            result_limit=1,
+        )
+        resp = rank_review(snap, req)
+        # Must be OK: all candidates evaluated, complete top-1 ranking
+        assert resp.status == ResponseStatus.OK
+        res = ReviewRankingResult.model_validate(resp.result)
+        assert res.ranked_candidates_count == 1
+        assert res.eligible_candidates_count == 2
+        assert res.is_evaluation_bounded is False
+
+    def test_evaluation_limit_sets_partial_and_reports_coverage(self):
+        """When evaluation_limit bounds candidate evaluation, status is PARTIAL with incomplete coverage reported."""
+        cam = _cam("cam_01")
+        m1 = _media("med_01", "cam_01")
+        m2 = _media("med_02", "cam_01")
+        o1 = _obs("obs_01", "cam_01", "med_01", ["det_01"])
+        o2 = _obs("obs_02", "cam_01", "med_02", ["det_02"])
+        det_1 = _det("det_01", "obs_01", "canis_latrans", 0.5, [TaxonAlternative(taxon_id="lynx_rufus", score=0.4)])
+        det_2 = _det("det_02", "obs_02", "canis_latrans", 0.5, [TaxonAlternative(taxon_id="lynx_rufus", score=0.4)])
+        enc_1 = _enc("enc_01", "cam_01", ["det_01"], ["obs_01"])
+        enc_2 = _enc("enc_02", "cam_01", ["det_02"], ["obs_02"])
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[cam], media_assets=[m1, m2], observations=[o1, o2],
+            detections=[det_1, det_2], encounters=[enc_1, enc_2],
+        )
+        # Evaluation bounded to 1 candidate
+        req = ReviewRankingRequest(
+            target_metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
+            target_species_id="lynx_rufus",
+            evaluation_limit=1,
+            evaluation_policy="time_order",
         )
         resp = rank_review(snap, req)
         assert resp.status == ResponseStatus.PARTIAL
         res = ReviewRankingResult.model_validate(resp.result)
-        assert res.ranked_candidates_count == 1
-        assert res.eligible_candidates_count == 2
-        assert any("truncated" in lim.lower() for lim in resp.limitations)
+        assert res.is_evaluation_bounded is True
+        assert res.evaluation_limit == 1
+        assert res.evaluation_policy == "time_order"
+        assert any("incomplete ranking coverage" in lim.lower() for lim in resp.limitations)
 
     def test_reference_snapshot_ranking_returns_unavailable(self):
         """Ranking is UNAVAILABLE on dataset_reference snapshots."""
@@ -1010,4 +1044,452 @@ class TestConclusionSensitiveRanking:
         assert resp.result["ranked_candidates_count"] == 50
         # Check execution took less than 200ms
         assert t_elapsed < 1.0, f"Execution took too long: {t_elapsed:.4f}s"
+
+
+class TestCandidateEligibilityScores:
+    """Requirement 1: Species-classification scores vs alternative scores from same score space."""
+
+    def test_species_score_compared_not_animal_detection_confidence(self):
+        """
+        Detection has high animal_detection_confidence (0.99), but moderate classification_confidence (0.55).
+        Top alternative score is 0.45 (margin = 0.55 - 0.45 = 0.10).
+        With threshold 0.25:
+          If animal_detection_confidence were incorrectly used: margin = 0.99 - 0.45 = 0.54 > 0.25 (excluded!).
+          Because classification_confidence is used: margin = 0.10 <= 0.25 (eligible and ranked!).
+        """
+        cam = _cam("cam_01")
+        m1 = _media("med_01", "cam_01")
+        o1 = _obs("obs_01", "cam_01", "med_01", ["det_01"])
+        det = Detection(
+            id="det_01",
+            observation_id="obs_01",
+            triage_state=TriageState.ANIMAL_DETECTED,
+            animal_detection_confidence=0.99,  # animal presence is almost certain
+            predicted_taxon_id="canis_latrans",
+            classification_confidence=0.55,    # species classification is ambiguous!
+            score_type=ScoreType.SOFTMAX,
+            alternatives=[
+                TaxonAlternative(taxon_id="lynx_rufus", score=0.45, raw_label="bobcat")
+            ],
+        )
+        enc = _enc("enc_01", "cam_01", ["det_01"], ["obs_01"])
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[cam], media_assets=[m1], observations=[o1],
+            detections=[det], encounters=[enc],
+        )
+
+        req = ReviewRankingRequest(
+            target_metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
+            target_species_id="lynx_rufus",
+            score_margin_threshold=0.25,
+        )
+        resp = rank_review(snap, req)
+        assert resp.status == ResponseStatus.OK
+        res = ReviewRankingResult.model_validate(resp.result)
+        # Confirms det_01 was NOT falsely excluded by animal_detection_confidence
+        assert res.ranked_candidates_count == 1
+        assert res.candidates[0].detection_id == "det_01"
+
+    def test_missing_classification_confidence_eligible_without_invented_margin(self):
+        """
+        When classification_confidence is None, margin is not inventable.
+        The candidate is handled explicitly as uncertain and remains eligible.
+        """
+        cam = _cam("cam_01")
+        m1 = _media("med_01", "cam_01")
+        o1 = _obs("obs_01", "cam_01", "med_01", ["det_01"])
+        det = Detection(
+            id="det_01",
+            observation_id="obs_01",
+            triage_state=TriageState.ANIMAL_DETECTED,
+            animal_detection_confidence=0.90,
+            predicted_taxon_id="canis_latrans",
+            classification_confidence=None,  # missing classification confidence
+            score_type=ScoreType.SOFTMAX,
+            alternatives=[
+                TaxonAlternative(taxon_id="lynx_rufus", score=0.40)
+            ],
+        )
+        enc = _enc("enc_01", "cam_01", ["det_01"], ["obs_01"])
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[cam], media_assets=[m1], observations=[o1],
+            detections=[det], encounters=[enc],
+        )
+
+        req = ReviewRankingRequest(
+            target_metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
+            target_species_id="lynx_rufus",
+            score_margin_threshold=0.25,
+        )
+        resp = rank_review(snap, req)
+        res = ReviewRankingResult.model_validate(resp.result)
+        assert res.ranked_candidates_count == 1
+        assert res.candidates[0].current_confidence is None
+
+    def test_incomparable_raw_score_type_eligible_without_invented_margin(self):
+        """
+        When score_type is RAW (logits), scores are incomparable to bounded [0.0, 1.0] probability margins.
+        Candidate is handled explicitly and remains eligible.
+        """
+        cam = _cam("cam_01")
+        m1 = _media("med_01", "cam_01")
+        o1 = _obs("obs_01", "cam_01", "med_01", ["det_01"])
+        det = Detection(
+            id="det_01",
+            observation_id="obs_01",
+            triage_state=TriageState.ANIMAL_DETECTED,
+            animal_detection_confidence=0.90,
+            predicted_taxon_id="canis_latrans",
+            classification_confidence=0.88,
+            score_type=ScoreType.RAW,  # raw logits, incomparable to probability margin
+            alternatives=[
+                TaxonAlternative(taxon_id="lynx_rufus", score=0.20)
+            ],
+        )
+        enc = _enc("enc_01", "cam_01", ["det_01"], ["obs_01"])
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[cam], media_assets=[m1], observations=[o1],
+            detections=[det], encounters=[enc],
+        )
+
+        req = ReviewRankingRequest(
+            target_metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
+            target_species_id="lynx_rufus",
+            score_margin_threshold=0.25,
+        )
+        resp = rank_review(snap, req)
+        res = ReviewRankingResult.model_validate(resp.result)
+        assert res.ranked_candidates_count == 1
+
+    def test_unambiguous_high_margin_excluded(self):
+        """Detection with margin (0.90 - 0.10 = 0.80) > threshold (0.25) is excluded as unambiguous."""
+        cam = _cam("cam_01")
+        m1 = _media("med_01", "cam_01")
+        o1 = _obs("obs_01", "cam_01", "med_01", ["det_01"])
+        det = Detection(
+            id="det_01",
+            observation_id="obs_01",
+            triage_state=TriageState.ANIMAL_DETECTED,
+            animal_detection_confidence=0.95,
+            predicted_taxon_id="canis_latrans",
+            classification_confidence=0.90,
+            score_type=ScoreType.SOFTMAX,
+            alternatives=[
+                TaxonAlternative(taxon_id="lynx_rufus", score=0.10)
+            ],
+        )
+        enc = _enc("enc_01", "cam_01", ["det_01"], ["obs_01"])
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[cam], media_assets=[m1], observations=[o1],
+            detections=[det], encounters=[enc],
+        )
+
+        req = ReviewRankingRequest(
+            target_metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
+            target_species_id="lynx_rufus",
+            score_margin_threshold=0.25,
+        )
+        resp = rank_review(snap, req)
+        res = ReviewRankingResult.model_validate(resp.result)
+        assert res.ranked_candidates_count == 0
+        assert res.excluded_candidates_count == 1
+
+
+class TestAnalyzeAndRankReviewBaselineParity:
+    """Requirement 3: Confirm rank_review() and analyze() produce the exact same baseline."""
+
+    def test_species_encounter_counts_baseline_parity(self):
+        """Baseline encounter count for target species matches analyze() under identical parameters."""
+        cam1 = _cam("cam_01")
+        cam2 = _cam("cam_02")
+        m1 = _media("med_01", "cam_01", T0)
+        m2 = _media("med_02", "cam_01", T0 + timedelta(hours=1))
+        m3 = _media("med_03", "cam_02", T0 + timedelta(hours=2))
+
+        o1 = _obs("obs_01", "cam_01", "med_01", ["det_01", "det_02"], T0)
+        o2 = _obs("obs_02", "cam_01", "med_02", ["det_03"], T0 + timedelta(hours=1))
+        o3 = _obs("obs_03", "cam_02", "med_03", ["det_04"], T0 + timedelta(hours=2))
+
+        # Enc 1 (cam_01): Bobcat (0.9) and Coyote (0.4) -> Bobcat present
+        d1 = _det("det_01", "obs_01", "lynx_rufus", 0.90)
+        d2 = _det("det_02", "obs_01", "canis_latrans", 0.40)
+        e1 = _enc("enc_01", "cam_01", ["det_01", "det_02"], ["obs_01"], T0, T0 + timedelta(minutes=15))
+
+        # Enc 2 (cam_01): Coyote predicted, but corrected to Bobcat by review -> Bobcat present
+        d3 = _det("det_03", "obs_02", "canis_latrans", 0.50, [TaxonAlternative(taxon_id="lynx_rufus", score=0.45)])
+        e2 = _enc("enc_02", "cam_01", ["det_03"], ["obs_02"], T0 + timedelta(hours=1), T0 + timedelta(hours=1, minutes=15))
+        rev = ReviewEvent(
+            id="rev_01", target_id="det_03", decision=ReviewDecision.CORRECT_SPECIES,
+            corrected_taxon_id="lynx_rufus", sequence_number=1, created_at=T0, reviewer="biologist",
+        )
+
+        # Enc 3 (cam_02): Puma -> no Bobcat
+        d4 = _det("det_04", "obs_03", "puma_concolor", 0.95)
+        e3 = _enc("enc_03", "cam_02", ["det_04"], ["obs_03"], T0 + timedelta(hours=2), T0 + timedelta(hours=2, minutes=15))
+
+        snap = Snapshot(
+            metadata=_meta(revision=5),
+            cameras=[cam1, cam2], media_assets=[m1, m2, m3], observations=[o1, o2, o3],
+            detections=[d1, d2, d3, d4], encounters=[e1, e2, e3], reviews=[rev],
+        )
+
+        # Analyze call
+        req_analyze = AnalysisRequest(
+            metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
+            species_ids=["lynx_rufus"],
+            expected_revision=5,
+        )
+        resp_analyze = analyze(snap, req_analyze)
+        assert resp_analyze.status == ResponseStatus.OK
+        bobcat_entry = next(e for e in resp_analyze.result["species_entries"] if e["taxon_id"] == "lynx_rufus")
+        analyze_bobcat_count = float(bobcat_entry["encounter_count"])  # should be 2.0 (enc_01 and enc_02)
+
+        # Rank review call
+        req_rank = ReviewRankingRequest(
+            target_metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
+            target_species_id="lynx_rufus",
+            expected_revision=5,
+        )
+        resp_rank = rank_review(snap, req_rank)
+        assert resp_rank.status == ResponseStatus.OK
+        rank_result = ReviewRankingResult.model_validate(resp_rank.result)
+
+        # EXACT PARITY CHECK:
+        assert rank_result.baseline_value == analyze_bobcat_count == 2.0
+
+    def test_camera_comparison_baseline_parity(self):
+        """Baseline difference for camera comparison matches analyze() Count(cam_A) - Count(cam_B)."""
+        cam_a = _cam("cam_A")
+        cam_b = _cam("cam_B")
+        m1 = _media("med_01", "cam_A", T0)
+        m2 = _media("med_02", "cam_A", T0 + timedelta(hours=1))
+        m3 = _media("med_03", "cam_B", T0)
+
+        o1 = _obs("obs_01", "cam_A", "med_01", ["det_01"], T0)
+        o2 = _obs("obs_02", "cam_A", "med_02", ["det_02"], T0 + timedelta(hours=1))
+        o3 = _obs("obs_03", "cam_B", "med_03", ["det_03"], T0)
+
+        # Cam A has 2 Bobcat encounters
+        d1 = _det("det_01", "obs_01", "lynx_rufus", 0.90)
+        d2 = _det("det_02", "obs_02", "lynx_rufus", 0.90)
+        e1 = _enc("enc_A1", "cam_A", ["det_01"], ["obs_01"], T0, T0 + timedelta(minutes=10))
+        e2 = _enc("enc_A2", "cam_A", ["det_02"], ["obs_02"], T0 + timedelta(hours=1), T0 + timedelta(hours=1, minutes=10))
+
+        # Cam B has 1 Bobcat encounter
+        d3 = _det("det_03", "obs_03", "lynx_rufus", 0.90)
+        e3 = _enc("enc_B1", "cam_B", ["det_03"], ["obs_03"], T0, T0 + timedelta(minutes=10))
+
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[cam_a, cam_b], media_assets=[m1, m2, m3], observations=[o1, o2, o3],
+            detections=[d1, d2, d3], encounters=[e1, e2, e3],
+        )
+
+        req_analyze = AnalysisRequest(
+            metric=AnalysisMetric.CAMERA_COMPARISON,
+            camera_ids=["cam_A", "cam_B"],
+            species_ids=["lynx_rufus"],
+        )
+        resp_analyze = analyze(snap, req_analyze)
+        assert resp_analyze.status == ResponseStatus.OK
+        cam_entries = {e["camera_id"]: e for e in resp_analyze.result["cameras"]}
+        count_a = float(cam_entries["cam_A"]["species_breakdown"].get("lynx_rufus", 0))
+        count_b = float(cam_entries["cam_B"]["species_breakdown"].get("lynx_rufus", 0))
+        expected_diff = count_a - count_b  # 2.0 - 1.0 = 1.0
+
+        req_rank = ReviewRankingRequest(
+            target_metric=AnalysisMetric.CAMERA_COMPARISON,
+            target_species_id="lynx_rufus",
+            camera_id_a="cam_A",
+            camera_id_b="cam_B",
+        )
+        resp_rank = rank_review(snap, req_rank)
+        res = ReviewRankingResult.model_validate(resp_rank.result)
+
+        # EXACT PARITY CHECK:
+        assert res.baseline_value == expected_diff == 1.0
+
+
+class TestCompletedEmptyEncounterCountsAndRates:
+    """Requirement 4: Completed-empty encounters return zero counts, while rates require a valid denominator."""
+
+    def test_completed_empty_encounter_counts_return_zero(self):
+        """Encounter grouping COMPLETED with encounters=[] returns zero counts with status OK."""
+        snap = Snapshot(
+            metadata=_meta(status=EncounterProcessingStatus.COMPLETED),
+            cameras=[_cam("cam_01"), _cam("cam_02")],
+            encounters=[],
+        )
+
+        # 1. species_encounter_counts
+        resp_sp = analyze(snap, AnalysisRequest(metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS))
+        assert resp_sp.status == ResponseStatus.OK
+        assert resp_sp.result["total_eligible_encounters"] == 0
+        assert resp_sp.result["species_entries"] == []
+
+        # 2. camera_comparison
+        resp_cam = analyze(snap, AnalysisRequest(metric=AnalysisMetric.CAMERA_COMPARISON))
+        assert resp_cam.status == ResponseStatus.OK
+        for b in resp_cam.result["cameras"]:
+            assert b["total_encounters"] == 0
+
+        # 3. daily_activity
+        resp_daily = analyze(snap, AnalysisRequest(metric=AnalysisMetric.DAILY_ACTIVITY, analysis_timezone="UTC"))
+        assert resp_daily.status == ResponseStatus.OK
+        assert resp_daily.result["date_counts"] == {}
+
+        # 4. hourly_activity
+        resp_hourly = analyze(snap, AnalysisRequest(metric=AnalysisMetric.HOURLY_ACTIVITY, analysis_timezone="UTC"))
+        assert resp_hourly.status == ResponseStatus.OK
+        assert all(count == 0 for count in resp_hourly.result["hour_counts"].values())
+
+        # 5. overview
+        resp_over = analyze(snap, AnalysisRequest(metric=AnalysisMetric.OVERVIEW))
+        assert resp_over.status == ResponseStatus.OK
+        assert resp_over.result["total_encounters"] == 0
+
+    def test_effort_rate_zero_denominator_returns_insufficient_data(self):
+        """Effort records cover 0 camera days in window -> INSUFFICIENT_DATA."""
+        eff = MonitoringEffort(
+            id="eff_01",
+            camera_id="cam_01",
+            active_intervals=[
+                TimeInterval(start=T0, end=T0)  # zero duration interval
+            ],
+        )
+        snap = Snapshot(
+            metadata=_meta(status=EncounterProcessingStatus.COMPLETED),
+            cameras=[_cam("cam_01")],
+            encounters=[],
+            monitoring_efforts=[eff],
+        )
+        resp = analyze(snap, AnalysisRequest(metric=AnalysisMetric.EFFORT_NORMALISED_RATES))
+        assert resp.status == ResponseStatus.INSUFFICIENT_DATA
+
+    def test_effort_rate_absent_effort_returns_unavailable(self):
+        """Entirely absent monitoring effort -> UNAVAILABLE."""
+        snap = Snapshot(
+            metadata=_meta(status=EncounterProcessingStatus.COMPLETED),
+            cameras=[_cam("cam_01")],
+            encounters=[],
+            monitoring_efforts=[],
+        )
+        resp = analyze(snap, AnalysisRequest(metric=AnalysisMetric.EFFORT_NORMALISED_RATES))
+        assert resp.status == ResponseStatus.UNAVAILABLE
+
+    def test_effort_rate_valid_denominator_completed_empty_returns_zero_rate(self):
+        """Valid non-zero camera days with completed-empty encounters -> rate is 0.0 with status OK."""
+        eff = MonitoringEffort(
+            id="eff_01",
+            camera_id="cam_01",
+            active_intervals=[
+                TimeInterval(start=T0, end=T0 + timedelta(days=5))  # 5 active camera days
+            ],
+        )
+        snap = Snapshot(
+            metadata=_meta(status=EncounterProcessingStatus.COMPLETED),
+            cameras=[_cam("cam_01")],
+            encounters=[],
+            monitoring_efforts=[eff],
+        )
+        req = AnalysisRequest(
+            metric=AnalysisMetric.EFFORT_NORMALISED_RATES,
+            start_time=T0,
+            end_time=T0 + timedelta(days=5),
+        )
+        resp = analyze(snap, req)
+        assert resp.status == ResponseStatus.OK
+        assert resp.result["total_active_camera_days"] == 5.0
+        assert resp.result["total_encounters_in_effort"] == 0
+        assert resp.result["overall_rate_per_camera_day"] == 0.0
+
+
+class TestReferenceMetricsSeparation:
+    """Requirement 5: Strict separation of reference-image metrics from encounter and operational metrics."""
+
+    def test_rank_review_on_reference_image_species_counts_unavailable(self):
+        """rank_review() rejects reference-image metric as UNAVAILABLE."""
+        snap = Snapshot(
+            metadata=_meta(mode=DataSourceMode.OPERATIONAL_PREDICTION),
+            cameras=[_cam("cam_01")],
+        )
+        req = ReviewRankingRequest(
+            target_metric=AnalysisMetric.REFERENCE_IMAGE_SPECIES_COUNTS,
+            target_species_id="lynx_rufus",
+        )
+        resp = rank_review(snap, req)
+        assert resp.status == ResponseStatus.UNAVAILABLE
+        assert any("deferred" in lim.lower() or "supported" in lim.lower() for lim in resp.limitations)
+
+    def test_rank_review_on_reference_snapshot_unavailable(self):
+        """rank_review() on dataset_reference snapshot returns UNAVAILABLE."""
+        snap = Snapshot(
+            metadata=_meta(mode=DataSourceMode.DATASET_REFERENCE),
+            cameras=[_cam("cam_01")],
+        )
+        req = ReviewRankingRequest(
+            target_metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
+            target_species_id="lynx_rufus",
+        )
+        resp = rank_review(snap, req)
+        assert resp.status == ResponseStatus.UNAVAILABLE
+        assert any("dataset_reference" in lim for lim in resp.limitations)
+
+
+class TestStoredSnapshotsBackwardCompatibility:
+    """Requirement 6: Verify backward compatibility by loading actual stored 1.0.0 and 1.1.0 snapshot files."""
+
+    def test_load_and_run_stored_1_0_0_valid_snapshot(self):
+        """Loads actual stored examples/valid_snapshot.json (schema 1.0.0), validates, and executes analytics."""
+        path = Path("examples/valid_snapshot.json")
+        snap, report = load_and_validate_snapshot(path)
+        assert report.is_valid, f"Validation errors on stored 1.0.0 snapshot: {report.errors}"
+        assert snap.metadata.schema_version == "1.0.0"
+
+        # Operational analytics run cleanly
+        resp_an = analyze(snap, AnalysisRequest(metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS))
+        assert resp_an.status in (ResponseStatus.OK, ResponseStatus.PARTIAL)
+
+        # Operational review ranking executes cleanly
+        resp_rk = rank_review(snap, ReviewRankingRequest(
+            target_metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
+            target_species_id="panthera_tigris",
+        ))
+        assert resp_rk.status in (ResponseStatus.OK, ResponseStatus.PARTIAL)
+
+    def test_load_and_run_stored_1_0_0_minimal_snapshot(self):
+        """Loads actual stored examples/minimal_snapshot.json (schema 1.0.0) and validates."""
+        path = Path("examples/minimal_snapshot.json")
+        snap, report = load_and_validate_snapshot(path)
+        assert report.is_valid, f"Validation errors on stored minimal 1.0.0 snapshot: {report.errors}"
+        assert snap.metadata.schema_version == "1.0.0"
+        resp = analyze(snap, AnalysisRequest(metric=AnalysisMetric.OVERVIEW))
+        assert resp.status == ResponseStatus.OK
+
+    def test_load_and_run_stored_1_1_0_snapshot(self):
+        """Loads actual stored examples/snapshot_v1_1_0.json (schema 1.1.0), validates, and runs rank_review."""
+        path = Path("examples/snapshot_v1_1_0.json")
+        snap, report = load_and_validate_snapshot(path)
+        assert report.is_valid, f"Validation errors on stored 1.1.0 snapshot: {report.errors}"
+        assert snap.metadata.schema_version == "1.1.0"
+        assert snap.metadata.encounter_processing_status == EncounterProcessingStatus.COMPLETED
+
+        # Analyze run
+        resp_an = analyze(snap, AnalysisRequest(metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS))
+        assert resp_an.status == ResponseStatus.OK
+
+        # rank_review run
+        resp_rk = rank_review(snap, ReviewRankingRequest(
+            target_metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
+            target_species_id="panthera_pardus",
+        ))
+        assert resp_rk.status == ResponseStatus.OK
+        res = ReviewRankingResult.model_validate(resp_rk.result)
+        assert res.ranked_candidates_count == 1
+        assert res.candidates[0].detection_id == "det_001"
+
 

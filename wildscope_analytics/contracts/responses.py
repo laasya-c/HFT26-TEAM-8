@@ -145,6 +145,10 @@ class ReviewRankingResult(BaseContractModel):
     eligible_candidates_count: int = Field(..., description="Detections meeting review eligibility.")
     ranked_candidates_count: int = Field(..., description="Count of returned ranked candidates.")
     excluded_candidates_count: int = Field(..., description="Detections evaluated but excluded (e.g. resolved, zero-impact).")
+    result_limit: int = Field(default=50, description="Requested result limit for top-k candidates.")
+    evaluation_limit: int | None = Field(default=None, description="Candidate evaluation cap if applied.")
+    evaluation_policy: str = Field(default="all_eligible", description="Candidate evaluation selection policy.")
+    is_evaluation_bounded: bool = Field(default=False, description="Whether candidate evaluation was capped before evaluating all candidates.")
     candidates: list[RankedCandidateResult] = Field(default_factory=list, description="Ranked review candidates.")
     marginal_analysis_disclaimer: str = Field(
         default=(

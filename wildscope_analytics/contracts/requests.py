@@ -125,13 +125,44 @@ class ReviewRankingRequest(BaseContractModel):
         default=0.25,
         ge=0.0,
         le=1.0,
-        description="Ambiguity margin threshold between top predictions triggering review."
+        description=(
+            "Ambiguity margin threshold between top species prediction and highest alternative species score "
+            "(default: 0.25). Detections with margin > threshold in probability score space are considered unambiguous "
+            "and excluded from the candidate queue unless explicitly flagged for expert review."
+        )
     )
-    max_records_to_rank: int = Field(
-        default=50,
+    result_limit: int | None = Field(
+        default=None,
         ge=1,
-        le=500,
-        description="Maximum prioritized records returned in response."
+        le=1000,
+        description=(
+            "Maximum number of top-ranked results to return after evaluating all eligible candidates (default: 50). "
+            "Fewer requested results does NOT mark an otherwise complete response as partial."
+        )
+    )
+    max_records_to_rank: int | None = Field(
+        default=None,
+        ge=1,
+        le=1000,
+        description="Backward-compatible alias for result_limit."
+    )
+    evaluation_limit: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Evaluate only a bounded subset of candidate detections during simulation. "
+            "Applying this limit produces incomplete ranking coverage and sets status to PARTIAL."
+        )
+    )
+    evaluation_policy: str = Field(
+        default="all_eligible",
+        description="Selection policy when evaluation_limit is set (e.g. 'all_eligible', 'time_order')."
+    )
+    min_confidence: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Minimum detection/classification confidence cutoff for baseline metric parity."
     )
     expected_revision: int | None = Field(
         default=None,
@@ -192,4 +223,11 @@ class ReviewRankingRequest(BaseContractModel):
                 raise ValueError(
                     f"start_time ({self.start_time}) cannot be later than end_time ({self.end_time})."
                 )
+        if self.result_limit is None and self.max_records_to_rank is None:
+            self.result_limit = 50
+            self.max_records_to_rank = 50
+        elif self.result_limit is None and self.max_records_to_rank is not None:
+            self.result_limit = self.max_records_to_rank
+        elif self.result_limit is not None and self.max_records_to_rank is None:
+            self.max_records_to_rank = self.result_limit
         return self

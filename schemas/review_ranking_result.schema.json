@@ -244,6 +244,37 @@
       "title": "Excluded Candidates Count",
       "type": "integer"
     },
+    "result_limit": {
+      "default": 50,
+      "description": "Requested result limit for top-k candidates.",
+      "title": "Result Limit",
+      "type": "integer"
+    },
+    "evaluation_limit": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Candidate evaluation cap if applied.",
+      "title": "Evaluation Limit"
+    },
+    "evaluation_policy": {
+      "default": "all_eligible",
+      "description": "Candidate evaluation selection policy.",
+      "title": "Evaluation Policy",
+      "type": "string"
+    },
+    "is_evaluation_bounded": {
+      "default": false,
+      "description": "Whether candidate evaluation was capped before evaluating all candidates.",
+      "title": "Is Evaluation Bounded",
+      "type": "boolean"
+    },
     "candidates": {
       "description": "Ranked review candidates.",
       "items": {
