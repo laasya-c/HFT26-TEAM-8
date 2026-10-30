@@ -1752,7 +1752,21 @@ class TestCaltechRealDatasetBlocked:
     silently substituting synthetic data as real dataset results.
     """
 
-    REAL_ANNOTATION_PATH = Path(os.environ.get("CCT_ANNOTATION_FILE", "caltech_camera_traps.json"))
+    @staticmethod
+    def _resolve_annotation_path() -> Path:
+        env_path = os.environ.get("CCT_ANNOTATION_FILE")
+        if env_path and Path(env_path).exists():
+            return Path(env_path)
+        for cand in [
+            Path("data/caltech_images_20210113.json"),
+            Path("data/caltech_camera_traps.json"),
+            Path("caltech_camera_traps.json"),
+        ]:
+            if cand.exists():
+                return cand
+        return Path(env_path or "caltech_camera_traps.json")
+
+    REAL_ANNOTATION_PATH = _resolve_annotation_path()
 
     def test_real_dataset_blocked_reported_honestly(self):
         """

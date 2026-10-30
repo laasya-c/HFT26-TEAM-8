@@ -285,14 +285,15 @@ class TestReferenceModeNamingAndUnits:
         )
 
     def test_reference_image_species_counts_direct_metric(self):
-        """Calling REFERENCE_IMAGE_SPECIES_COUNTS directly returns image-level metrics."""
+        """Calling REFERENCE_IMAGE_SPECIES_COUNTS directly returns image-level metrics with canonical unit."""
         snap = self._make_ref_snap()
         req = AnalysisRequest(metric=AnalysisMetric.REFERENCE_IMAGE_SPECIES_COUNTS)
         resp = analyze(snap, req)
         assert resp.status == ResponseStatus.OK
         assert resp.metric == AnalysisMetric.REFERENCE_IMAGE_SPECIES_COUNTS
-        assert resp.metric_units == "annotated images (reference mode)"
-        assert resp.result["counting_unit"] == "annotated_images (reference annotations, not encounters)"
+        assert resp.metric_units == "annotated images"
+        assert resp.result["counting_unit"] == "annotated images"
+        assert resp.result["data_source_mode"] == "dataset_reference"
         assert resp.result["total_scoped_images"] == 1
 
     def test_species_encounter_counts_on_reference_emits_deprecation_warning(self):
@@ -303,6 +304,8 @@ class TestReferenceModeNamingAndUnits:
         assert resp.status == ResponseStatus.OK
         assert any("DEPRECATION" in w for w in resp.warnings)
         assert resp.metric == AnalysisMetric.REFERENCE_IMAGE_SPECIES_COUNTS
+        assert resp.metric_units == "annotated images (reference mode)"
+        assert resp.result["counting_unit"] == "annotated_images (reference annotations, not encounters)"
 
     def test_reference_image_counts_on_operational_returns_unavailable(self):
         """Calling REFERENCE_IMAGE_SPECIES_COUNTS on operational prediction data returns UNAVAILABLE."""

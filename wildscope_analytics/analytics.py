@@ -771,7 +771,12 @@ def compute_species_encounter_counts(
             "Use 'reference_image_species_counts' instead. Reference counts reflect annotated images, not encounters."
         )
         return _species_counts_reference_mode(
-            snapshot, request, scoped_camera_ids, ctx, metric=AnalysisMetric.REFERENCE_IMAGE_SPECIES_COUNTS
+            snapshot,
+            request,
+            scoped_camera_ids,
+            ctx,
+            metric=AnalysisMetric.REFERENCE_IMAGE_SPECIES_COUNTS,
+            is_deprecated_fallback=True,
         )
 
     enc_cap_err = _check_encounter_capability(snapshot, AnalysisMetric.SPECIES_ENCOUNTER_COUNTS, request, ctx)
@@ -909,6 +914,7 @@ def _species_counts_reference_mode(
     scoped_camera_ids: set[str],
     ctx: FilterContext,
     metric: AnalysisMetric = AnalysisMetric.REFERENCE_IMAGE_SPECIES_COUNTS,
+    is_deprecated_fallback: bool = False,
 ) -> AnalysisResponseEnvelope:
     """
     Species counts for dataset_reference mode.
@@ -977,9 +983,16 @@ def _species_counts_reference_mode(
         "Encounter-based counts require Harsh's group_encounters() applied to this dataset."
     )
 
+    if is_deprecated_fallback:
+        canonical_units = "annotated images (reference mode)"
+        counting_unit = "annotated_images (reference annotations, not encounters)"
+    else:
+        canonical_units = "annotated images"
+        counting_unit = "annotated images"
+
     result = {
         "data_source_mode": DataSourceMode.DATASET_REFERENCE.value,
-        "counting_unit": "annotated_images (reference annotations, not encounters)",
+        "counting_unit": counting_unit,
         "species_entries": [e.model_dump() for e in species_entries],
         "unknown_animal_images": unknown_images,
         "empty_images_excluded": empty_images,
@@ -1000,7 +1013,7 @@ def _species_counts_reference_mode(
         metric=metric,
         applied_filters=_build_applied_filters(request),
         result=result,
-        metric_units="annotated images (reference mode)",
+        metric_units=canonical_units,
         evidence_references=_sample_evidence(evidence_obs_ids),
         excluded_records_count=ctx.excluded_count,
         exclusion_reasons=ctx.exclusion_reasons,
@@ -1683,7 +1696,12 @@ def analyze(
                 warnings=ctx.warnings,
             )
         return _species_counts_reference_mode(
-            snapshot, request, scoped_camera_ids, ctx, metric=AnalysisMetric.REFERENCE_IMAGE_SPECIES_COUNTS
+            snapshot,
+            request,
+            scoped_camera_ids,
+            ctx,
+            metric=AnalysisMetric.REFERENCE_IMAGE_SPECIES_COUNTS,
+            is_deprecated_fallback=False,
         )
     if metric == AnalysisMetric.CAMERA_COMPARISON:
         return compute_camera_comparison(snapshot, request, labels, scoped_camera_ids, ctx)
