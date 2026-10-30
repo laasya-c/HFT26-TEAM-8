@@ -280,6 +280,17 @@ def _select_winning_review(
     if all(r.sequence_number is not None for r in reviews):
         reviews_sorted = sorted(reviews, key=lambda r: r.sequence_number)
         # Highest sequence_number wins (most recent authoritative backend write)
+        max_seq = reviews_sorted[-1].sequence_number
+        tied = [r for r in reviews_sorted if r.sequence_number == max_seq]
+        if len(tied) > 1:
+            # Tied sequence_numbers indicate a backend bug (sequence_numbers must be
+            # unique per-detection).  Santosh must fix.  We do NOT guess a winner.
+            ids = [r.id for r in tied]
+            return None, (
+                f"Duplicate sequence_number {max_seq} on ReviewEvents {ids}. "
+                f"sequence_number must be unique and monotonically increasing per detection. "
+                f"Santosh must resolve this backend inconsistency before re-exporting the snapshot."
+            )
         return reviews_sorted[-1], None
 
     # Check if all reviews agree (same decision + corrected_taxon_id)
@@ -422,7 +433,10 @@ def _is_detection_eligible(
     label = labels.get(det_id)
     if label is None:
         return False
-    if label.is_rejected or label.is_empty:
+    # Guard: rejected, empty, or unresolved detections never contribute to analytics.
+    # Unresolved detections have taxon_id == _UNRESOLVED_TAXON; allowing them through
+    # would silently inject a sentinel value into species counts.
+    if label.is_rejected or label.is_empty or label.is_unresolved:
         return False
     # InclusionPolicy filter
     if request.inclusion_policy == InclusionPolicy.REVIEWED_ONLY:
@@ -654,9 +668,13 @@ def compute_species_encounter_counts(
         return _species_counts_reference_mode(snapshot, request, scoped_camera_ids, ctx)
 
     if not snapshot.encounters:
-        ctx.limit("No encounter records in snapshot. Ensure Harsh has exported group_encounters() output.")
+        ctx.limit(
+            "No encounter records in snapshot. "
+            "Encounter-based metrics are UNAVAILABLE until Harsh's group_encounters() output "
+            "is included. Do not infer encounters from image counts."
+        )
         return AnalysisResponseEnvelope(
-            status=ResponseStatus.INSUFFICIENT_DATA,
+            status=ResponseStatus.UNAVAILABLE,
             schema_version=CURRENT_SCHEMA_VERSION,
             dataset_revision=snapshot.metadata.dataset_revision,
             metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS,
@@ -703,16 +721,15 @@ def compute_species_encounter_counts(
 
             # Apply inclusion policy and confidence filter
             if not _is_detection_eligible(det_id, labels, request):
-                if lbl.is_rejected:
+                if lbl.is_unresolved:
+                    unresolved_count += 1
+                    ctx.exclude("Detection has unresolved conflicting review decisions")
+                elif lbl.is_rejected:
                     rejected_count += 1
                 elif lbl.is_empty:
                     empty_count += 1
                 elif request.inclusion_policy == InclusionPolicy.REVIEWED_ONLY and lbl.review_id is None:
                     ctx.exclude("Detection excluded by REVIEWED_ONLY inclusion policy")
-                continue
-
-            if lbl.is_unresolved:
-                unresolved_count += 1
                 continue
 
             if lbl.is_unknown:
@@ -932,6 +949,24 @@ def compute_camera_comparison(
     det_map = {d.id: d for d in snapshot.detections}
     cam_map = {c.id: c for c in snapshot.cameras}
 
+    # Guard: encounter records are a prerequisite (Harsh's domain).
+    # Absent records → UNAVAILABLE (not INSUFFICIENT_DATA).
+    if not snapshot.encounters:
+        ctx.limit(
+            "No encounter records in snapshot. Camera comparison requires "
+            "Harsh's group_encounters() output. This capability is UNAVAILABLE "
+            "until encounters are provided."
+        )
+        return AnalysisResponseEnvelope(
+            status=ResponseStatus.UNAVAILABLE,
+            schema_version=CURRENT_SCHEMA_VERSION,
+            dataset_revision=snapshot.metadata.dataset_revision,
+            metric=AnalysisMetric.CAMERA_COMPARISON,
+            applied_filters=_build_applied_filters(request),
+            limitations=ctx.limitations,
+            warnings=ctx.warnings,
+        )
+
     camera_to_encounters: dict[str, list] = defaultdict(list)
     for enc in snapshot.encounters:
         if enc.camera_id not in scoped_camera_ids:
@@ -973,20 +1008,6 @@ def compute_camera_comparison(
             has_gps=cam.latitude is not None if cam else False,
             has_timezone=cam.timezone is not None if cam else False,
         ))
-
-    if not snapshot.encounters:
-        ctx.limit(
-            "No encounter records in snapshot. Camera comparison requires encounter output from Harsh."
-        )
-        return AnalysisResponseEnvelope(
-            status=ResponseStatus.INSUFFICIENT_DATA,
-            schema_version=CURRENT_SCHEMA_VERSION,
-            dataset_revision=snapshot.metadata.dataset_revision,
-            metric=AnalysisMetric.CAMERA_COMPARISON,
-            applied_filters=_build_applied_filters(request),
-            limitations=ctx.limitations,
-            warnings=ctx.warnings,
-        )
 
     result = CameraComparisonResult(
         data_source_mode=source_mode.value,
@@ -1054,9 +1075,13 @@ def compute_daily_activity(
         )
 
     if not snapshot.encounters:
-        ctx.limit("No encounter records; daily activity unavailable.")
+        ctx.limit(
+            "No encounter records in snapshot. Daily activity requires "
+            "Harsh's group_encounters() output. This capability is UNAVAILABLE "
+            "until encounters are provided."
+        )
         return AnalysisResponseEnvelope(
-            status=ResponseStatus.INSUFFICIENT_DATA,
+            status=ResponseStatus.UNAVAILABLE,
             schema_version=CURRENT_SCHEMA_VERSION,
             dataset_revision=snapshot.metadata.dataset_revision,
             metric=AnalysisMetric.DAILY_ACTIVITY,
@@ -1090,9 +1115,14 @@ def compute_daily_activity(
         encounters_excluded_missing_timestamp=missing_ts,
     )
 
-    status = ResponseStatus.OK
-    if missing_ts > 0 or ctx.excluded_count > 0:
+    if missing_ts > 0 and len(date_counts) == 0:
+        # All scoped encounters lacked timestamps; inadequate data for temporal daily activity
+        status = ResponseStatus.INSUFFICIENT_DATA
+        ctx.limit("All scoped encounters lack timestamps; data is insufficient for daily activity grouping.")
+    elif missing_ts > 0 or ctx.excluded_count > 0:
         status = ResponseStatus.PARTIAL
+    else:
+        status = ResponseStatus.OK
 
     return AnalysisResponseEnvelope(
         status=status,
@@ -1153,9 +1183,13 @@ def compute_hourly_activity(
         )
 
     if not snapshot.encounters:
-        ctx.limit("No encounter records; hourly activity unavailable.")
+        ctx.limit(
+            "No encounter records in snapshot. Hourly activity requires "
+            "Harsh's group_encounters() output. This capability is UNAVAILABLE "
+            "until encounters are provided."
+        )
         return AnalysisResponseEnvelope(
-            status=ResponseStatus.INSUFFICIENT_DATA,
+            status=ResponseStatus.UNAVAILABLE,
             schema_version=CURRENT_SCHEMA_VERSION,
             dataset_revision=snapshot.metadata.dataset_revision,
             metric=AnalysisMetric.HOURLY_ACTIVITY,
@@ -1190,9 +1224,14 @@ def compute_hourly_activity(
         encounters_excluded_missing_timestamp=missing_ts,
     )
 
-    status = ResponseStatus.OK
-    if missing_ts > 0 or ctx.excluded_count > 0:
+    if missing_ts > 0 and sum(hour_counts.values()) == 0:
+        # All scoped encounters lacked timestamps; inadequate data for temporal hourly activity
+        status = ResponseStatus.INSUFFICIENT_DATA
+        ctx.limit("All scoped encounters lack timestamps; data is insufficient for hourly activity grouping.")
+    elif missing_ts > 0 or ctx.excluded_count > 0:
         status = ResponseStatus.PARTIAL
+    else:
+        status = ResponseStatus.OK
 
     return AnalysisResponseEnvelope(
         status=status,
@@ -1235,9 +1274,13 @@ def compute_species_camera_matrix(
 ) -> AnalysisResponseEnvelope:
     """Part F.6: Species × camera count matrix."""
     if not snapshot.encounters:
-        ctx.limit("No encounter records; species-camera matrix unavailable.")
+        ctx.limit(
+            "No encounter records in snapshot. Species-camera matrix requires "
+            "Harsh's group_encounters() output. This capability is UNAVAILABLE "
+            "until encounters are provided."
+        )
         return AnalysisResponseEnvelope(
-            status=ResponseStatus.INSUFFICIENT_DATA,
+            status=ResponseStatus.UNAVAILABLE,
             schema_version=CURRENT_SCHEMA_VERSION,
             dataset_revision=snapshot.metadata.dataset_revision,
             metric=AnalysisMetric.SPECIES_CAMERA_MATRIX,
@@ -1346,11 +1389,11 @@ def compute_effort_normalised_rates(
     if not snapshot.monitoring_efforts:
         ctx.limit(
             "No monitoring effort records in snapshot. "
-            "Effort-normalised rates require verified active intervals from Santosh. "
+            "Effort-normalised rates are UNAVAILABLE without verified active intervals from Santosh. "
             "Never inferred from image frequency."
         )
         return AnalysisResponseEnvelope(
-            status=ResponseStatus.INSUFFICIENT_DATA,
+            status=ResponseStatus.UNAVAILABLE,
             schema_version=CURRENT_SCHEMA_VERSION,
             dataset_revision=snapshot.metadata.dataset_revision,
             metric=AnalysisMetric.EFFORT_NORMALISED_RATES,
@@ -1360,9 +1403,13 @@ def compute_effort_normalised_rates(
         )
 
     if not snapshot.encounters:
-        ctx.limit("No encounter records; effort-normalised rates require encounter output from Harsh.")
+        ctx.limit(
+            "No encounter records in snapshot. Effort-normalised rates require "
+            "Harsh's group_encounters() output. This capability is UNAVAILABLE "
+            "until encounters are provided."
+        )
         return AnalysisResponseEnvelope(
-            status=ResponseStatus.INSUFFICIENT_DATA,
+            status=ResponseStatus.UNAVAILABLE,
             schema_version=CURRENT_SCHEMA_VERSION,
             dataset_revision=snapshot.metadata.dataset_revision,
             metric=AnalysisMetric.EFFORT_NORMALISED_RATES,
@@ -1482,9 +1529,17 @@ def compute_effort_normalised_rates(
         overall_rate_per_camera_day=round(overall_rate, 4) if overall_rate is not None else None,
     )
 
-    status = ResponseStatus.OK
-    if cameras_without_effort or ctx.excluded_count > 0:
+    if total_camera_days == 0.0:
+        # Supplied effort records did not cover any active time in the analysis window
+        status = ResponseStatus.INSUFFICIENT_DATA
+        ctx.limit(
+            "Supplied monitoring effort provides zero active camera-days in the requested analysis window; "
+            "effort data is inadequate to compute encounter rates."
+        )
+    elif cameras_without_effort or ctx.excluded_count > 0:
         status = ResponseStatus.PARTIAL
+    else:
+        status = ResponseStatus.OK
 
     return AnalysisResponseEnvelope(
         status=status,

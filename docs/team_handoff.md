@@ -19,7 +19,7 @@
 | Dataset reference annotations | — | `DatasetReferenceAnnotation` entity |
 | Review ordering | Timestamp-only risk | `sequence_number` field on `ReviewEvent` |
 | Caltech dataset | — | Adapter implemented; blocked by network |
-| Tests | 38 passing | **108 passing, 1 skipped** |
+| Tests | 38 passing | **117 passing, 1 skipped** |
 
 ---
 
@@ -145,15 +145,45 @@ Every `analyze()` call returns `AnalysisResponseEnvelope` with:
 }
 ```
 
-### Status semantics (same 5 values, Phase 1 contract)
+### Status semantics (precise per-metric contract)
 
-| Status | Meaning |
-|---|---|
-| `ok` | Computation completed cleanly |
-| `partial` | Usable results; check `excluded_records_count` and `exclusion_reasons` |
-| `insufficient_data` | Inputs exist but inadequate (e.g. no encounters, no effort) |
-| `unavailable` | Prerequisite absent (e.g. `rank_review` before Phase 3) |
-| `invalid_request` | Bad request or revision mismatch; check `errors[]` |
+| Status | Exact Meaning & Trigger Condition | Example Scenarios |
+|---|---|---|
+| `ok` | Computation completed cleanly with zero record exclusions. | All records in scope have valid timestamps, confirmed labels, and complete metadata. |
+| `partial` | Usable results produced, but some records were excluded. Always inspect `excluded_records_count` and `exclusion_reasons`. | Some encounters missing timestamps (excluded from daily/hourly bins); detections below `min_confidence`; unresolved review conflicts; cameras without effort records. |
+| `insufficient_data` | Input records exist in the snapshot, but are inadequate/insufficient to compute the requested metric. | Encounters exist, but **all** scoped encounters lack timestamps (cannot bin by date/hour); monitoring effort records exist, but cover **zero active camera-days** in the requested analysis window. |
+| `unavailable` | A prerequisite data type or capability is **entirely absent** from the snapshot or pipeline. | `rank_review()` called before Phase 3; encounter metrics called with `snapshot.encounters == []` (requires Harsh's `group_encounters()`); `effort_normalised_rates` called with `snapshot.monitoring_efforts == []`. |
+| `invalid_request` | Contract or precondition violation; inspect `errors[]`. | Snapshot schema validation failed; `expected_revision` mismatch with `dataset_revision` (optimistic locking failure). |
+
+### Encounter Dependency Matrix
+
+Encounter grouping is externally owned by Harsh (`group_encounters()`). Shravan's analytics module consumes encounters; it never invents a competing grouping algorithm or infers encounters from image counts.
+
+| Metric | Requires Encounters? | Behavior when Encounters Absent | Behavior when All Timestamps Missing | Behavior when Some Timestamps Missing |
+|---|---|---|---|---|
+| `overview` | Optional | Computes image/camera/detection counts; `total_encounters` is `null` with explanation | Reports time span if observations have timestamps | Reports time span from available timestamps |
+| `species_encounter_counts` (operational) | **Required** | `unavailable` (limitation explains Harsh dependency) | Encounters counted without time-window filtering | Encounters outside window excluded (`partial`) |
+| `species_encounter_counts` (reference) | No (uses images) | `ok` / `partial` (counts annotated images, clearly distinct from encounters) | Images without timestamp excluded from time filters | Images without timestamp excluded (`partial`) |
+| `camera_comparison` | **Required** | `unavailable` | All encounters counted per camera | Excluded from time filters (`partial`) |
+| `daily_activity` | **Required** | `unavailable` | `insufficient_data` (cannot group by date) | `partial` (valid binned, missing reported) |
+| `hourly_activity` | **Required** | `unavailable` | `insufficient_data` (cannot group by hour) | `partial` (valid binned, missing reported) |
+| `species_camera_matrix` | **Required** | `unavailable` | Matrix cells populated without time filter | Excluded from time filters (`partial`) |
+| `effort_normalised_rates` | **Required** | `unavailable` | Encounters without timestamp counted in `encounters_outside_effort` | Encounters outside effort counted separately (`partial`) |
+
+### ReviewEvent.sequence_number & Review Conflict Resolution
+
+When multiple reviews exist for a single target detection, deterministic resolution is required.
+
+#### Requirements for Santosh's Backend
+1. **Field:** `ReviewEvent.sequence_number: int | None` (schema 1.1.0).
+2. **Semantics:** Monotonically increasing positive integer assigned on review creation, unique per target detection.
+3. **Ordering Authority:** The review with the highest `sequence_number` is authoritative (represents the latest backend review state).
+
+#### Handling Ambiguous / Missing / Duplicate Sequences
+- **All Reviews Agree:** If all reviews on a detection share the identical `decision` and `corrected_taxon_id`, the decision is applied even if `sequence_number` is absent.
+- **Missing `sequence_number` with Conflicting Decisions:** Marked `is_unresolved=True`, `taxon_id="__unresolved__"`, and conflict note populated. The resolver **never guesses** or falls back to timestamps unless explicitly configured with `ReviewOrderingMechanism.TIMESTAMP`.
+- **Duplicate / Tied `sequence_number`:** If multiple reviews share the highest `sequence_number` with conflicting decisions, this is flagged as a backend data integrity bug. The resolver marks `is_unresolved=True` and records an explicit conflict note (`Duplicate sequence_number X on ReviewEvents [...]`).
+- **Analytics Safety Guarantee:** Unresolved detections (`is_unresolved=True`) are strictly blocked by `_is_detection_eligible()`. They **never** contribute to species encounter counts, camera breakdowns, or matrix cells. They are tracked and reported in `unresolved_detections_count` and trigger `status=partial`.
 
 ### Per-metric result shapes
 
@@ -233,33 +263,32 @@ Every `analyze()` call returns `AnalysisResponseEnvelope` with:
 socket.gaierror: [Errno 11001] getaddrinfo failed
 ```
 
-No outbound network access from the development sandbox. **You must run the download yourself:**
+No outbound network access from the development sandbox. **Run these exact Windows PowerShell commands outside the sandbox:**
 
-```bash
-# Option 1: Azure blob (HTTP, no auth needed)
-curl -L "https://lilawildlife.blob.core.windows.net/lila-wildlife/caltechcameratraps/labels/caltech_camera_traps.json.zip" \
-     -o caltech_camera_traps.json.zip
-unzip caltech_camera_traps.json.zip
+```powershell
+# Step 1: Download official Caltech Camera Traps annotations archive (verified Lila Wildlife URL)
+Invoke-WebRequest -Uri "https://lilawildlife.blob.core.windows.net/lila-wildlife/caltechcameratraps/labels/caltech_camera_traps.json.zip" -OutFile "caltech_camera_traps.json.zip"
 
-# Option 2: GCP (requires gsutil)
-gsutil cp gs://public-datasets-lila/caltechcameratraps/labels/caltech_camera_traps.json.zip .
-unzip caltech_camera_traps.json.zip
+# Step 2: Extract archive (expands to caltech_camera_traps.json)
+Expand-Archive -Path "caltech_camera_traps.json.zip" -DestinationPath "." -Force
+
+# Step 3: Run the CLI adapter to import snapshot and display overview metrics
+python -m wildscope_analytics.caltech_adapter caltech_camera_traps.json --max-images 500 --timezone US/Pacific --metric overview
+
+# Step 4: Run the real integration test suite pointing to the extracted file
+$env:CCT_ANNOTATION_FILE = "caltech_camera_traps.json"
+python -m pytest tests/test_phase2_analytics.py::TestCaltechRealDatasetBlocked::test_real_dataset_integration -v -s
 ```
 
 License: Community Data License Agreement - Permissive 1.0 (see lila.science for terms).
 
-### Running the adapter locally
+### Running the adapter via Python CLI or API
 
-```bash
-# Import all images, no timezone (captured_at = null)
-python -c "
-from wildscope_analytics.caltech_adapter import import_caltech_snapshot
-snap, report = import_caltech_snapshot('caltech_camera_traps.json')
-print(f'Cameras: {len(snap.cameras)}, Images: {len(snap.observations)}, Annotations: {len(snap.reference_annotations)}')
-print(f'Unmapped categories: {report.categories_unmapped}')
-"
+```powershell
+# Using the adapter CLI runner:
+python -m wildscope_analytics.caltech_adapter caltech_camera_traps.json --max-images 500 --timezone US/Pacific --metric species_encounter_counts
 
-# Import with timezone and subset
+# Or via Python script:
 python -c "
 from wildscope_analytics.caltech_adapter import import_caltech_snapshot
 from wildscope_analytics import analyze, AnalysisRequest, AnalysisMetric
@@ -268,7 +297,8 @@ snap, report = import_caltech_snapshot(
     max_images=500,
     timezone_policy='US/Pacific',   # analyst-supplied; not in dataset
 )
-req = AnalysisRequest(metric=AnalysisMetric.OVERVIEW)
+print(f'Imported: {report.total_images_imported} images across {report.total_cameras} cameras')
+req = AnalysisRequest(metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS)
 resp = analyze(snap, req)
 print(resp.model_dump_json(indent=2))
 "

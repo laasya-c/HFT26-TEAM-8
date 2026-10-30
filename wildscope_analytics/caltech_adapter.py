@@ -624,3 +624,122 @@ def import_caltech_snapshot(
     )
 
     return snapshot, report
+
+
+# ---------------------------------------------------------------------------
+# CLI RUNNER
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    """Command-line interface for the Caltech CCT adapter."""
+    import argparse
+    from wildscope_analytics.analytics import analyze
+    from wildscope_analytics.contracts.enums import AnalysisMetric
+    from wildscope_analytics.contracts.requests import AnalysisRequest
+
+    parser = argparse.ArgumentParser(
+        description="WILDSCOPE Caltech Camera Traps (CCT) Adapter & Analytics Runner",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "annotation_file",
+        nargs="?",
+        default="caltech_camera_traps.json",
+        help="Path to the unzipped Caltech CCT annotation JSON file.",
+    )
+    parser.add_argument(
+        "--max-images",
+        type=int,
+        default=500,
+        help="Max images to import (deterministic subset by sorted ID). Use 0 for all.",
+    )
+    parser.add_argument(
+        "--timezone",
+        default=None,
+        help="Explicit IANA timezone policy (e.g., 'America/Los_Angeles'). None leaves captured_at null.",
+    )
+    parser.add_argument(
+        "--location-ids",
+        nargs="*",
+        default=None,
+        help="Optional list of CCT location/site IDs to import.",
+    )
+    parser.add_argument(
+        "--output-snapshot",
+        default=None,
+        help="Optional path to write the imported Snapshot JSON.",
+    )
+    parser.add_argument(
+        "--metric",
+        default="overview",
+        choices=[
+            "overview",
+            "species_encounter_counts",
+            "camera_comparison",
+            "daily_activity",
+            "hourly_activity",
+            "species_camera_matrix",
+            "effort_normalised_rates",
+        ],
+        help="Analysis metric to execute on the imported snapshot.",
+    )
+
+    args = parser.parse_args()
+
+    max_imgs = None if args.max_images == 0 else args.max_images
+    print("=" * 70)
+    print("WILDSCOPE Caltech Camera Traps (CCT) Dataset Adapter")
+    print("=" * 70)
+    print(f"Annotation file : {args.annotation_file}")
+    print(f"Max images      : {max_imgs}")
+    print(f"Timezone policy : {args.timezone}")
+    print(f"Metric to run   : {args.metric}")
+    print("-" * 70)
+
+    snap, report = import_caltech_snapshot(
+        args.annotation_file,
+        max_images=max_imgs,
+        timezone_policy=args.timezone,
+        location_ids=args.location_ids,
+    )
+
+    if report.is_blocked:
+        print("[BLOCKED] Real dataset file is not available.")
+        print(f"Reason: {report.block_reason}")
+        print("\nTo acquire the official file outside the sandbox:")
+        print("  Invoke-WebRequest -Uri \"https://lilawildlife.blob.core.windows.net/lila-wildlife/caltechcameratraps/labels/caltech_camera_traps.json.zip\" -OutFile \"caltech_camera_traps.json.zip\"")
+        print("  Expand-Archive -Path \"caltech_camera_traps.json.zip\" -DestinationPath \".\"")
+        return
+
+    print("[SUCCESS] Snapshot imported:")
+    print(f"  Total images in file      : {report.total_images_in_file}")
+    print(f"  Images imported           : {report.total_images_imported}")
+    print(f"  Images excluded           : {report.total_images_excluded}")
+    print(f"  Total annotations in file : {report.total_annotations_in_file}")
+    print(f"  Annotations imported      : {report.total_annotations_imported}")
+    print(f"  Total cameras (locations) : {report.total_cameras}")
+    print(f"  Total categories in file  : {report.categories_total}")
+    print(f"  Animal categories         : {report.categories_animal}")
+    print(f"  Non-animal categories     : {report.categories_non_animal}")
+    print(f"  Unmapped categories       : {report.categories_unmapped}")
+    print(f"  Missing metadata notes    : {report.missing_metadata}")
+
+    if args.output_snapshot:
+        out_p = Path(args.output_snapshot)
+        out_p.write_text(snap.model_dump_json(indent=2), encoding="utf-8")
+        print(f"\nSnapshot JSON saved to: {out_p}")
+
+    # Run analysis
+    req = AnalysisRequest(
+        metric=AnalysisMetric(args.metric),
+        analysis_timezone=args.timezone,
+    )
+    resp = analyze(snap, req)
+    print("\n" + "=" * 70)
+    print(f"Analysis Response [{resp.status.value.upper()}]: {args.metric}")
+    print("=" * 70)
+    print(json.dumps(resp.model_dump(mode="json"), indent=2))
+
+
+if __name__ == "__main__":
+    main()

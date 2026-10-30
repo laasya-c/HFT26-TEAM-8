@@ -26,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 import json
+import os
 import pytest
 
 from wildscope_analytics import (
@@ -310,6 +311,102 @@ class TestEffectiveLabelResolver:
         _ = resolve_effective_labels(snap)
         assert det.predicted_taxon_id == original_taxon  # unchanged
 
+    def test_duplicate_tied_sequence_numbers_reported_as_unresolved(self):
+        """
+        Duplicate sequence_numbers on conflicting reviews indicate a backend bug
+        (sequence_numbers must be unique and monotone per detection).
+        The resolver must NOT guess an arbitrary winner; it marks is_unresolved=True.
+        """
+        det = _det("det_01", "obs_01", taxon="canis_latrans")
+        rev1 = _rev("rev_01", "det_01", ReviewDecision.CONFIRM_SPECIES, seq=2)
+        rev2 = _rev("rev_02", "det_01", ReviewDecision.CORRECT_SPECIES, corrected="puma_concolor", seq=2)
+        snap = self._make_minimal_snap(det, [rev1, rev2])
+        labels = resolve_effective_labels(snap)
+        lbl = labels["det_01"]
+        assert lbl.is_unresolved
+        assert lbl.taxon_id == _UNRESOLVED_TAXON
+        assert "duplicate sequence_number" in lbl.conflict_note.lower()
+
+
+# ---------------------------------------------------------------------------
+# AMBIGUOUS REVIEW REGRESSION TESTS
+# ---------------------------------------------------------------------------
+
+class TestAmbiguousReviewRegression:
+    """
+    Regression: ambiguous review ordering cannot silently contribute
+    a guessed species or sentinel taxon to analytics metrics.
+    """
+
+    def _make_ambiguous_snap(self, tie_sequences: bool = False) -> Snapshot:
+        cam = _cam("cam_01", site_id="site_01")
+        m1 = _media("med_01", "cam_01", T0)
+        o1 = _obs("obs_01", "cam_01", "med_01", ["det_01"], T0)
+        det = _det("det_01", "obs_01", taxon="puma_concolor")
+        enc = _enc("enc_01", "cam_01", ["det_01"], ["obs_01"], start=T0, end=T1)
+        if tie_sequences:
+            rev1 = _rev("rev_01", "det_01", ReviewDecision.CONFIRM_SPECIES, seq=5)
+            rev2 = _rev("rev_02", "det_01", ReviewDecision.CORRECT_SPECIES, corrected="lynx_rufus", seq=5)
+        else:
+            rev1 = _rev("rev_01", "det_01", ReviewDecision.CONFIRM_SPECIES, seq=None)
+            rev2 = _rev("rev_02", "det_01", ReviewDecision.REJECT_DETECTION, seq=None)
+        return Snapshot(
+            metadata=_meta(ordering=ReviewOrderingMechanism.BACKEND_REVISION),
+            cameras=[cam],
+            media_assets=[m1],
+            observations=[o1],
+            detections=[det],
+            encounters=[enc],
+            reviews=[rev1, rev2],
+        )
+
+    def test_unresolved_detection_does_not_contribute_to_species_counts(self):
+        """Unresolved detection must not appear in species_entries or contribute guessed species."""
+        snap = self._make_ambiguous_snap(tie_sequences=False)
+        req = AnalysisRequest(metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS)
+        resp = analyze(snap, req)
+        assert resp.status == ResponseStatus.PARTIAL
+        result = resp.result
+        # species_entries must be empty - neither puma_concolor nor sentinel should appear
+        assert result["species_entries"] == []
+        assert result["unresolved_detections_count"] == 1
+        # Check that no sentinel appears in any entry
+        for entry in result["species_entries"]:
+            assert _UNRESOLVED_TAXON not in entry["taxon_id"]
+            assert "puma_concolor" not in entry["taxon_id"]
+
+    def test_tied_sequences_does_not_contribute_to_species_counts(self):
+        """Tied sequence_numbers must not guess a winner or contribute species."""
+        snap = self._make_ambiguous_snap(tie_sequences=True)
+        req = AnalysisRequest(metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS)
+        resp = analyze(snap, req)
+        assert resp.status == ResponseStatus.PARTIAL
+        result = resp.result
+        assert result["species_entries"] == []
+        assert result["unresolved_detections_count"] == 1
+
+    def test_unresolved_detection_does_not_contribute_to_camera_comparison(self):
+        """Unresolved detection must not contribute to camera species breakdown."""
+        snap = self._make_ambiguous_snap(tie_sequences=False)
+        req = AnalysisRequest(metric=AnalysisMetric.CAMERA_COMPARISON)
+        resp = analyze(snap, req)
+        assert resp.status in (ResponseStatus.OK, ResponseStatus.PARTIAL)
+        result = resp.result
+        cam_row = result["cameras"][0]
+        # species_breakdown must NOT contain the unresolved taxon or raw prediction
+        assert cam_row["species_breakdown"] == {}
+        assert _UNRESOLVED_TAXON not in cam_row["species_breakdown"]
+
+    def test_unresolved_detection_does_not_contribute_to_matrix(self):
+        """Unresolved detection must not add rows to species-camera matrix."""
+        snap = self._make_ambiguous_snap(tie_sequences=False)
+        req = AnalysisRequest(metric=AnalysisMetric.SPECIES_CAMERA_MATRIX)
+        resp = analyze(snap, req)
+        assert resp.status in (ResponseStatus.OK, ResponseStatus.PARTIAL)
+        result = resp.result
+        assert result["species"] == []
+        assert result["matrix"] == []
+
 
 # ---------------------------------------------------------------------------
 # OVERVIEW METRIC TESTS
@@ -500,14 +597,15 @@ class TestSpeciesEncounterCounts:
         assert result["empty_frame_detections_excluded"] == 1
         assert result["species_entries"] == []
 
-    def test_no_encounters_returns_insufficient_data(self):
-        """Snapshot with no encounters returns INSUFFICIENT_DATA, not fabricated counts."""
+    def test_no_encounters_returns_unavailable(self):
+        """Snapshot with no encounters returns UNAVAILABLE, not fabricated counts or insufficient_data."""
         cam = _cam("cam_01")
         snap = Snapshot(metadata=_meta(), cameras=[cam])
         req = AnalysisRequest(metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS)
         resp = analyze(snap, req)
-        assert resp.status == ResponseStatus.INSUFFICIENT_DATA
+        assert resp.status == ResponseStatus.UNAVAILABLE
         assert resp.result is None
+        assert any("group_encounters" in lim for lim in resp.limitations)
 
     def test_species_filter_applied(self):
         """species_ids filter restricts which taxa appear in results."""
@@ -693,8 +791,8 @@ class TestDailyActivity:
         # 20:00 UTC + 5:30 = 01:30 IST next day (Oct 18 in IST)
         assert "2026-10-18" in result["date_counts"]
 
-    def test_daily_missing_timestamps_excluded(self):
-        """Encounters without timestamps are excluded and counted."""
+    def test_daily_all_missing_timestamps_insufficient_data(self):
+        """When all encounters lack timestamps, daily activity returns INSUFFICIENT_DATA."""
         cam = _cam("cam_01")
         m1 = _media("med_01", "cam_01", T0)
         o1 = _obs("obs_01", "cam_01", "med_01", ["det_01"], T0)
@@ -717,9 +815,45 @@ class TestDailyActivity:
         )
         req = AnalysisRequest(metric=AnalysisMetric.DAILY_ACTIVITY, analysis_timezone="UTC")
         resp = analyze(snap, req)
+        assert resp.status == ResponseStatus.INSUFFICIENT_DATA
+        result = resp.result
+        assert result["encounters_excluded_missing_timestamp"] == 1
+        assert resp.excluded_records_count == 1
+        assert any("missing timestamp" in r.lower() for r in resp.exclusion_reasons)
+
+    def test_daily_missing_timestamps_excluded(self):
+        """When some encounters have timestamps and some don't, excluded ones are reported and status is PARTIAL."""
+        cam = _cam("cam_01")
+        m1 = _media("med_01", "cam_01", T0)
+        m2 = _media("med_02", "cam_01", T1)
+        o1 = _obs("obs_01", "cam_01", "med_01", ["det_01"], T0)
+        o2 = _obs("obs_02", "cam_01", "med_02", ["det_02"], T1)
+        d1 = _det("det_01", "obs_01", "puma_concolor")
+        d2 = _det("det_02", "obs_02", "puma_concolor")
+        # e1 has timestamp, e2 has no timestamps
+        e1 = _enc("enc_01", "cam_01", ["det_01"], ["obs_01"], T0, T1)
+        e2 = Encounter(
+            id="enc_02",
+            camera_id="cam_01",
+            member_detection_ids=["det_02"],
+            member_observation_ids=["obs_02"],
+            rule_version="v1_time_gap_30min",
+        )
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[cam],
+            media_assets=[m1, m2],
+            observations=[o1, o2],
+            detections=[d1, d2],
+            encounters=[e1, e2],
+        )
+        req = AnalysisRequest(metric=AnalysisMetric.DAILY_ACTIVITY, analysis_timezone="UTC")
+        resp = analyze(snap, req)
         assert resp.status == ResponseStatus.PARTIAL
         result = resp.result
         assert result["encounters_excluded_missing_timestamp"] == 1
+        assert resp.excluded_records_count == 1
+        assert any("missing timestamp" in r.lower() for r in resp.exclusion_reasons)
 
 
 # ---------------------------------------------------------------------------
@@ -767,13 +901,13 @@ class TestHourlyActivity:
         for hour_bin, count in result["hour_counts"].items():
             assert isinstance(count, int), f"Hour {hour_bin} should be int, got {type(count)}"
 
-    def test_hourly_no_encounters_insufficient_data(self):
-        """No encounters → INSUFFICIENT_DATA, not fabricated zeros."""
+    def test_hourly_no_encounters_unavailable(self):
+        """No encounters → UNAVAILABLE, not fabricated zeros."""
         cam = _cam("cam_01")
         snap = Snapshot(metadata=_meta(), cameras=[cam])
         req = AnalysisRequest(metric=AnalysisMetric.HOURLY_ACTIVITY, analysis_timezone="UTC")
         resp = analyze(snap, req)
-        assert resp.status == ResponseStatus.INSUFFICIENT_DATA
+        assert resp.status == ResponseStatus.UNAVAILABLE
 
 
 # ---------------------------------------------------------------------------
@@ -821,7 +955,7 @@ class TestSpeciesCameraMatrix:
         snap = Snapshot(metadata=_meta(), cameras=[_cam("cam_01")])
         req = AnalysisRequest(metric=AnalysisMetric.SPECIES_CAMERA_MATRIX)
         resp = analyze(snap, req)
-        assert resp.status == ResponseStatus.INSUFFICIENT_DATA
+        assert resp.status == ResponseStatus.UNAVAILABLE
 
 
 # ---------------------------------------------------------------------------
@@ -889,8 +1023,8 @@ class TestEffortNormalisedRates:
         assert cam_row["encounters_in_effort"] == 0
         assert cam_row["encounters_outside_effort"] == 1
 
-    def test_no_effort_returns_insufficient_data(self):
-        """Missing effort records → INSUFFICIENT_DATA, not fabricated zeros."""
+    def test_no_effort_returns_unavailable(self):
+        """Missing effort records → UNAVAILABLE, not fabricated zeros or insufficient_data."""
         cam = _cam("cam_01")
         m1 = _media("med_01", "cam_01", T0)
         o1 = _obs("obs_01", "cam_01", "med_01", ["det_01"], T0)
@@ -906,10 +1040,12 @@ class TestEffortNormalisedRates:
         )
         req = AnalysisRequest(metric=AnalysisMetric.EFFORT_NORMALISED_RATES)
         resp = analyze(snap, req)
-        assert resp.status == ResponseStatus.INSUFFICIENT_DATA
+        assert resp.status == ResponseStatus.UNAVAILABLE
+        assert resp.result is None
+        assert any("monitoring effort" in lim.lower() for lim in resp.limitations)
 
     def test_zero_effort_in_window_no_division(self):
-        """Effort outside window → 0 camera-days → rate is None, not ZeroDivisionError."""
+        """Supplied effort outside window → 0 camera-days → INSUFFICIENT_DATA, rate is None, not ZeroDivisionError."""
         eff_start = datetime(2026, 10, 1, 0, 0, tzinfo=UTC)
         eff_end = datetime(2026, 10, 5, 0, 0, tzinfo=UTC)
         enc_time = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
@@ -921,6 +1057,8 @@ class TestEffortNormalisedRates:
             end_time=datetime(2026, 10, 20, 0, 0, tzinfo=UTC),
         )
         resp = analyze(snap, req)
+        # Supplied but inadequate effort in window → INSUFFICIENT_DATA
+        assert resp.status == ResponseStatus.INSUFFICIENT_DATA
         result = resp.result
         cam_row = next(r for r in result["camera_rates"] if r["camera_id"] == "cam_01")
         assert cam_row["active_camera_days_in_window"] == pytest.approx(0.0)
@@ -1074,6 +1212,45 @@ class TestDatasetReferenceMode:
         assert snap.detections == []
         assert len(snap.reference_annotations) == 2
 
+    def test_reference_analytics_distinct_from_encounter_analytics(self):
+        """
+        Image counts remain explicitly distinct from encounter counts in reference mode:
+        - counting_unit is explicitly image-based
+        - metric_units is annotated images
+        - evidence references are observation IDs, not encounter IDs
+        - total_eligible_encounters does not appear
+        """
+        snap = self._make_reference_snap()
+        req = AnalysisRequest(metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS)
+        resp = analyze(snap, req)
+        assert resp.status in (ResponseStatus.OK, ResponseStatus.PARTIAL)
+        result = resp.result
+        assert result["counting_unit"] == "annotated_images (reference annotations, not encounters)"
+        assert resp.metric_units == "annotated images (reference mode)"
+        assert "total_eligible_encounters" not in result
+        assert "multi_species_encounters" not in result
+        assert len(resp.evidence_references) > 0
+        for ev in resp.evidence_references:
+            assert ev.startswith("cct:obs:")
+
+    def test_encounter_metrics_unavailable_in_reference_mode_without_grouper(self):
+        """
+        Encounter-dependent metrics (camera_comparison, hourly, daily, matrix, effort)
+        must return UNAVAILABLE on a reference snapshot without encounters.
+        """
+        snap = self._make_reference_snap()
+        for metric in [
+            AnalysisMetric.CAMERA_COMPARISON,
+            AnalysisMetric.HOURLY_ACTIVITY,
+            AnalysisMetric.DAILY_ACTIVITY,
+            AnalysisMetric.SPECIES_CAMERA_MATRIX,
+            AnalysisMetric.EFFORT_NORMALISED_RATES,
+        ]:
+            req = AnalysisRequest(metric=metric, analysis_timezone="UTC")
+            resp = analyze(snap, req)
+            assert resp.status == ResponseStatus.UNAVAILABLE, f"Metric {metric} should be UNAVAILABLE without encounters"
+            assert resp.result is None
+
 
 # ---------------------------------------------------------------------------
 # EMPTY VALID DATASET TESTS
@@ -1096,14 +1273,14 @@ class TestEmptyValidDataset:
         snap = Snapshot(metadata=_meta())
         req = AnalysisRequest(metric=AnalysisMetric.SPECIES_ENCOUNTER_COUNTS)
         resp = analyze(snap, req)
-        # No encounters → INSUFFICIENT_DATA (not fabricated zeros)
-        assert resp.status == ResponseStatus.INSUFFICIENT_DATA
+        # No encounters → UNAVAILABLE (not fabricated zeros)
+        assert resp.status == ResponseStatus.UNAVAILABLE
 
     def test_empty_dataset_hourly_activity(self):
         snap = Snapshot(metadata=_meta())
         req = AnalysisRequest(metric=AnalysisMetric.HOURLY_ACTIVITY, analysis_timezone="UTC")
         resp = analyze(snap, req)
-        assert resp.status == ResponseStatus.INSUFFICIENT_DATA
+        assert resp.status == ResponseStatus.UNAVAILABLE
 
 
 # ---------------------------------------------------------------------------
@@ -1160,7 +1337,8 @@ class TestTimezoneHandling:
         assert resp.status in (ResponseStatus.OK, ResponseStatus.PARTIAL)
         assert any("timezone" in w.lower() or "utc" in w.lower() for w in resp.warnings)
 
-    def test_encounter_without_timestamp_excluded_from_hourly(self):
+    def test_all_encounters_missing_timestamp_returns_insufficient_data(self):
+        """When all encounters lack timestamps, hourly/daily activity returns INSUFFICIENT_DATA."""
         cam = _cam("cam_01")
         m1 = _media("med_01", "cam_01", T0)
         o1 = _obs("obs_01", "cam_01", "med_01", ["det_01"], T0)
@@ -1182,9 +1360,44 @@ class TestTimezoneHandling:
         )
         req = AnalysisRequest(metric=AnalysisMetric.HOURLY_ACTIVITY, analysis_timezone="UTC")
         resp = analyze(snap, req)
+        assert resp.status == ResponseStatus.INSUFFICIENT_DATA
+        result = resp.result
+        assert result["encounters_excluded_missing_timestamp"] == 1
+        assert resp.excluded_records_count == 1
+        assert any("missing timestamp" in r.lower() for r in resp.exclusion_reasons)
+
+    def test_some_encounters_missing_timestamp_returns_partial(self):
+        """When some encounters have timestamps and some lack them, returns PARTIAL with exclusions reported."""
+        cam = _cam("cam_01")
+        m1 = _media("med_01", "cam_01", T0)
+        m2 = _media("med_02", "cam_01", T1)
+        o1 = _obs("obs_01", "cam_01", "med_01", ["det_01"], T0)
+        o2 = _obs("obs_02", "cam_01", "med_02", ["det_02"], T1)
+        d1 = _det("det_01", "obs_01", "puma_concolor")
+        d2 = _det("det_02", "obs_02", "puma_concolor")
+        # e1 has timestamp, e2 lacks timestamp
+        e1 = _enc("enc_01", "cam_01", ["det_01"], ["obs_01"], T0, T0 + timedelta(minutes=5))
+        e2 = Encounter(
+            id="enc_02",
+            camera_id="cam_01",
+            member_detection_ids=["det_02"],
+            rule_version="v1_time_gap_30min",
+        )
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[cam],
+            media_assets=[m1, m2],
+            observations=[o1, o2],
+            detections=[d1, d2],
+            encounters=[e1, e2],
+        )
+        req = AnalysisRequest(metric=AnalysisMetric.HOURLY_ACTIVITY, analysis_timezone="UTC")
+        resp = analyze(snap, req)
         assert resp.status == ResponseStatus.PARTIAL
         result = resp.result
         assert result["encounters_excluded_missing_timestamp"] == 1
+        assert resp.excluded_records_count == 1
+        assert any("missing timestamp" in r.lower() for r in resp.exclusion_reasons)
 
 
 # ---------------------------------------------------------------------------
@@ -1538,7 +1751,7 @@ class TestCaltechRealDatasetBlocked:
     silently substituting synthetic data as real dataset results.
     """
 
-    REAL_ANNOTATION_PATH = Path("caltech_camera_traps.json")
+    REAL_ANNOTATION_PATH = Path(os.environ.get("CCT_ANNOTATION_FILE", "caltech_camera_traps.json"))
 
     def test_real_dataset_blocked_reported_honestly(self):
         """
