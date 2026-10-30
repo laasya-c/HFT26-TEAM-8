@@ -1783,21 +1783,26 @@ class TestCaltechRealDatasetBlocked:
                 "no outbound network access from sandbox. "
                 "Acquisition: curl -L <azure_url> -o caltech_camera_traps.json.zip && unzip it."
             )
-        # Run with a small deterministic subset (500 images, sorted by ID)
+        # Run with a deterministic subset (1,000 images, sorted by ID)
         snap, report = import_caltech_snapshot(
             self.REAL_ANNOTATION_PATH,
-            max_images=500,
+            max_images=1000,
             timezone_policy=None,  # no UTC assumption
         )
         # Verify report structure
         assert not report.is_blocked
-        assert report.total_images_imported <= 500
+        assert report.total_images_imported <= 1000
         assert report.total_images_in_file > 100_000  # full dataset ~243k
         assert report.categories_total >= 20
         assert len(snap.cameras) > 0
         assert len(snap.reference_annotations) > 0
-        # Run analytics
-        req = AnalysisRequest(metric=AnalysisMetric.OVERVIEW)
-        resp = analyze(snap, req)
-        assert resp.status in (ResponseStatus.OK, ResponseStatus.PARTIAL)
-        assert resp.result["data_source_mode"] == "dataset_reference"
+        # Run overview analytics
+        req_over = AnalysisRequest(metric=AnalysisMetric.OVERVIEW)
+        resp_over = analyze(snap, req_over)
+        assert resp_over.status in (ResponseStatus.OK, ResponseStatus.PARTIAL)
+        assert resp_over.result["data_source_mode"] == "dataset_reference"
+        # Run reference_image_species_counts analytics
+        req_sp = AnalysisRequest(metric=AnalysisMetric.REFERENCE_IMAGE_SPECIES_COUNTS)
+        resp_sp = analyze(snap, req_sp)
+        assert resp_sp.status in (ResponseStatus.OK, ResponseStatus.PARTIAL)
+        assert resp_sp.metric_units == "annotated images"

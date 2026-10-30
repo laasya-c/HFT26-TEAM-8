@@ -79,6 +79,7 @@ from wildscope_analytics.contracts.entities import (
 from wildscope_analytics.contracts.enums import (
     AnnotationSource,
     DataSourceMode,
+    EncounterProcessingStatus,
     MediaType,
     ReviewOrderingMechanism,
 )
@@ -571,6 +572,7 @@ def import_caltech_snapshot(
         source_system="WILDSCOPE_CALTECH_ADAPTER",
         data_source_mode=DataSourceMode.DATASET_REFERENCE,
         review_ordering_mechanism=ReviewOrderingMechanism.BACKEND_REVISION,
+        encounter_processing_status=EncounterProcessingStatus.UNAVAILABLE,
         has_spatial_context=False,
         has_monitoring_effort=False,
         provenance={
@@ -674,6 +676,7 @@ def main() -> None:
         default="overview",
         choices=[
             "overview",
+            "reference_image_species_counts",
             "species_encounter_counts",
             "camera_comparison",
             "daily_activity",

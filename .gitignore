@@ -32,6 +32,13 @@ env/
 venv/
 ENV/
 
+# Large Datasets & Archives
+data/
+*.zip
+caltech_camera_traps*
+*.tar.gz
+*.tar
+
 # IDE / Editor
 .vscode/
 .idea/
