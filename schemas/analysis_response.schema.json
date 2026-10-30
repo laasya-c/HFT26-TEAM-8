@@ -1,9 +1,15 @@
 {
   "$defs": {
     "AnalysisMetric": {
-      "description": "Operations supported by the decision intelligence module.\nRejects arbitrary or unsupported queries.",
+      "description": "Operations supported by the decision intelligence module.\nRejects arbitrary or unsupported queries.\n\nPhase 2 additions:\n- OVERVIEW: snapshot-level summary (encounters, images, cameras, time coverage).\n- SPECIES_ENCOUNTER_COUNTS: deduplicated encounter/species contributions.\n- CAMERA_COMPARISON: per-camera/site encounter and species counts.\n- DAILY_ACTIVITY: encounter counts grouped by calendar date.\n- HOURLY_ACTIVITY: encounter counts grouped by hour-of-day (0-23).\n- SPECIES_CAMERA_MATRIX: species \u00d7 camera count matrix.\n- EFFORT_NORMALISED_RATES: encounters per active camera-day.",
       "enum": [
+        "overview",
         "species_encounter_counts",
+        "camera_comparison",
+        "daily_activity",
+        "hourly_activity",
+        "species_camera_matrix",
+        "effort_normalised_rates",
         "activity_time_distribution",
         "cross_camera_association",
         "camera_activity_summary",
@@ -39,7 +45,11 @@
         "ENCOUNTER_MEMBERSHIP_VIOLATION",
         "UNSUPPORTED_SCHEMA_VERSION",
         "UNSUPPORTED_OPERATION",
-        "SCHEMA_VIOLATION"
+        "SCHEMA_VIOLATION",
+        "AMBIGUOUS_REVIEW_ORDER",
+        "CONFLICTING_REVIEW",
+        "DATASET_SOURCE_MISMATCH",
+        "MISSING_ENCOUNTER_SUPPORT"
       ],
       "title": "ValidationErrorCode",
       "type": "string"
@@ -114,7 +124,7 @@
       "description": "Operational status of the response."
     },
     "schema_version": {
-      "default": "1.0.0",
+      "default": "1.1.0",
       "description": "Schema contract version.",
       "title": "Schema Version",
       "type": "string"

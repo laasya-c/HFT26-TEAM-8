@@ -271,7 +271,12 @@ class TestMissingOptionalDataPreserved:
 class TestIntegrationEntryPoints:
     """Verifies analyze() and rank_review() entry points."""
 
-    def test_analyze_on_valid_snapshot_returns_honest_unavailable(self):
+    def test_analyze_on_valid_snapshot_returns_ok_phase2(self):
+        """
+        Phase 2: analyze() now computes real results and returns status=OK (not UNAVAILABLE).
+        The Phase 1 expectation of UNAVAILABLE is intentionally superseded by working analytics.
+        rank_review() still returns UNAVAILABLE (Phase 3 scope).
+        """
         valid_path = EXAMPLES_DIR / "valid_snapshot.json"
         snapshot, report = load_and_validate_snapshot(valid_path)
         assert snapshot is not None
@@ -282,10 +287,14 @@ class TestIntegrationEntryPoints:
             expected_revision=snapshot.metadata.dataset_revision,
         )
         response = analyze(snapshot, req)
-        # Status MUST be UNAVAILABLE in Phase 1, never fake OK or fabricated numbers
-        assert response.status == ResponseStatus.UNAVAILABLE
-        assert response.result is None
-        assert any("Phase 2" in lim for lim in response.limitations)
+        # Phase 2: analyze() produces real results — status must NOT be UNAVAILABLE
+        assert response.status in (ResponseStatus.OK, ResponseStatus.PARTIAL)
+        # Result payload must be present and not None
+        assert response.result is not None
+        # dataset_revision must be preserved
+        assert response.dataset_revision == snapshot.metadata.dataset_revision
+        # metric must be set
+        assert response.metric == AnalysisMetric.SPECIES_ENCOUNTER_COUNTS
 
     def test_analyze_on_revision_mismatch_returns_invalid_request(self):
         valid_path = EXAMPLES_DIR / "valid_snapshot.json"
@@ -302,6 +311,7 @@ class TestIntegrationEntryPoints:
         assert any("revision" in err.message.lower() for err in response.errors)
 
     def test_rank_review_on_valid_snapshot_returns_honest_unavailable(self):
+        """rank_review() remains UNAVAILABLE until Phase 3."""
         valid_path = EXAMPLES_DIR / "valid_snapshot.json"
         snapshot, _ = load_and_validate_snapshot(valid_path)
         assert snapshot is not None
@@ -313,4 +323,4 @@ class TestIntegrationEntryPoints:
         response = rank_review(snapshot, req)
         assert response.status == ResponseStatus.UNAVAILABLE
         assert response.result is None
-        assert any("Phase 2" in lim for lim in response.limitations)
+        assert any("Phase 3" in lim for lim in response.limitations)

@@ -360,6 +360,11 @@ class ReviewEvent(BaseContractModel):
     Human review decision.
     Original model outputs remain immutable; reviews are append-only audit events.
     The effective state is resolved transactionally by the backend.
+
+    Phase 2 extension:
+    - sequence_number: backend-assigned monotone integer ordering reviews on the same target.
+      When supplied, the resolver uses this instead of created_at for deterministic ordering.
+      Santosh must supply this when review_ordering_mechanism = "backend_revision".
     """
     id: str = Field(..., description="Stable unique review event ID.")
     target_id: str = Field(
@@ -377,6 +382,15 @@ class ReviewEvent(BaseContractModel):
     expected_revision: int | None = Field(
         default=None,
         description="Source dataset revision at time of review (for optimistic concurrency)."
+    )
+    sequence_number: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Phase 2: Backend-assigned monotone integer ordering ReviewEvents on the same target. "
+            "When present, used as authoritative ordering; created_at is supplementary. "
+            "expected_revision is a concurrency precondition, NOT an ordering mechanism."
+        ),
     )
 
     @field_validator("created_at")
@@ -452,6 +466,93 @@ class MonitoringEffort(BaseContractModel):
                         f"[{nxt.start.isoformat()} - {nxt.end.isoformat()}]."
                     )
         return self
+
+
+class DatasetReferenceAnnotation(BaseContractModel):
+    """
+    Official dataset annotation (e.g. from Caltech Camera Traps ground truth).
+
+    Phase 2 discriminated type for dataset_reference mode.
+    This entity MUST NOT be mixed with operational_prediction Detection records.
+    It preserves:
+    - Original source annotation ID and image ID.
+    - Original category ID and category name exactly as published.
+    - Namespace-prefixed internal identifiers to avoid collisions with operational IDs.
+    - Bounding box in dataset-native COCO pixel format (xmin, ymin, width, height).
+
+    Key distinctions from Detection:
+    - No prediction run, model name, or confidence score (none are available).
+    - No triage state (dataset annotations assert presence, not probability).
+    - No invented review events.
+    """
+    id: str = Field(
+        ...,
+        description=(
+            "Namespaced internal identifier, e.g. 'cct:ann:12345'. "
+            "Original source annotation ID is preserved in source_annotation_id."
+        ),
+    )
+    observation_id: str = Field(
+        ..., description="Reference to the Observation record for the annotated image."
+    )
+    source_annotation_id: str = Field(
+        ..., description="Original annotation ID as published by the dataset."
+    )
+    source_image_id: str = Field(
+        ..., description="Original image ID from the dataset (before namespacing)."
+    )
+    dataset_name: str = Field(
+        ..., description="Dataset name, e.g. 'caltech_camera_traps'."
+    )
+    dataset_version: str | None = Field(
+        default=None,
+        description="Dataset version or release identifier if available.",
+    )
+    category_id: int | str = Field(
+        ...,
+        description=(
+            "Original category ID exactly as published. "
+            "Integer for CCT (COCO Camera Traps format)."
+        ),
+    )
+    category_name: str = Field(
+        ...,
+        description="Original category name exactly as published (e.g. 'coyote', 'empty', 'person').",
+    )
+    wildscope_taxon_id: str | None = Field(
+        default=None,
+        description=(
+            "Mapped WILDSCOPE taxon identifier, if a canonical mapping exists. "
+            "None if category is non-animal, empty, unknown, or unsupported. "
+            "Mapping is documented in the dataset adapter."
+        ),
+    )
+    is_animal: bool = Field(
+        ...,
+        description=(
+            "True if category represents an animal species or group. "
+            "False for 'empty', 'vehicle', 'person', and non-animal categories."
+        ),
+    )
+    is_empty: bool = Field(
+        default=False,
+        description="True if category_name == 'empty' (no animal trigger).",
+    )
+    bbox_coco: list[float] | None = Field(
+        default=None,
+        description=(
+            "Bounding box in COCO pixel format [xmin, ymin, width, height]. "
+            "Preserved exactly from the source dataset. Not normalized."
+        ),
+    )
+    sequence_id: str | None = Field(
+        default=None,
+        description="Dataset burst sequence ID (seq_id in CCT format).",
+    )
+    provenance: dict[str, Any] | str | None = Field(
+        default=None,
+        description="Source dataset provenance (URL, license, import timestamp).",
+    )
 
 
 class SpatialZone(BaseContractModel):

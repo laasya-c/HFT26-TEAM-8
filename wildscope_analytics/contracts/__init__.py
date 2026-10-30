@@ -1,12 +1,21 @@
 """
-WILDSCOPE Shared Data Contracts - Phase 1
+WILDSCOPE Shared Data Contracts - Phase 1 / Phase 2
 
 Exports enumerations, entity schemas, snapshot models, requests, and response envelopes.
+
+Phase 2 additions:
+- DataSourceMode: discriminates operational vs dataset_reference analytics.
+- ReviewOrderingMechanism: documents how multi-review ordering is resolved.
+- AnnotationSource: marks provenance of annotation entities.
+- DatasetReferenceAnnotation: official dataset annotations (no invented confidence/runs).
+- Snapshot.reference_annotations, SnapshotMetadata.data_source_mode.
+- ReviewEvent.sequence_number: backend ordering field.
 """
 
 from wildscope_analytics.contracts.entities import (
     BaseContractModel,
     Camera,
+    DatasetReferenceAnnotation,
     Detection,
     Encounter,
     MediaAsset,
@@ -22,12 +31,15 @@ from wildscope_analytics.contracts.entities import (
 )
 from wildscope_analytics.contracts.enums import (
     AnalysisMetric,
+    AnnotationSource,
     CalibrationStatus,
+    DataSourceMode,
     InclusionPolicy,
     MediaType,
     PredictionStatus,
     ResponseStatus,
     ReviewDecision,
+    ReviewOrderingMechanism,
     ScoreType,
     TriageState,
     ValidationErrorCode,
@@ -48,10 +60,13 @@ __all__ = [
     "AnalysisMetric",
     "AnalysisRequest",
     "AnalysisResponseEnvelope",
+    "AnnotationSource",
     "BaseContractModel",
     "CalibrationStatus",
     "Camera",
     "CURRENT_SCHEMA_VERSION",
+    "DatasetReferenceAnnotation",
+    "DataSourceMode",
     "Detection",
     "Encounter",
     "InclusionPolicy",
@@ -65,6 +80,7 @@ __all__ = [
     "ResponseStatus",
     "ReviewDecision",
     "ReviewEvent",
+    "ReviewOrderingMechanism",
     "ReviewRankingRequest",
     "ScoreType",
     "Snapshot",

@@ -1,10 +1,12 @@
 """
 WILDSCOPE Decision Intelligence & Analytics Module
-JSON Schema Generator - Phase 1
+JSON Schema Generator - Phase 1 / Phase 2
 
 Exports official JSON Schema definitions from Pydantic v2 models into schemas/ directory.
 This ensures the backend (Santosh) and frontend (Laasya) have standard schema files
 without maintaining duplicate schemas manually.
+
+Phase 2 additions: DatasetReferenceAnnotation schema exported separately.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from wildscope_analytics.contracts.entities import DatasetReferenceAnnotation
 from wildscope_analytics.contracts.requests import AnalysisRequest, ReviewRankingRequest
 from wildscope_analytics.contracts.responses import AnalysisResponseEnvelope
 from wildscope_analytics.contracts.snapshot import Snapshot
@@ -36,6 +39,7 @@ def export_schemas(output_dir: Path | str | None = None) -> list[Path]:
         ("analysis_request.schema.json", AnalysisRequest),
         ("review_ranking_request.schema.json", ReviewRankingRequest),
         ("analysis_response.schema.json", AnalysisResponseEnvelope),
+        ("dataset_reference_annotation.schema.json", DatasetReferenceAnnotation),
     ]
 
     exported_paths = []

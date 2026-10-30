@@ -80,8 +80,24 @@ class AnalysisMetric(StrEnum):
     """
     Operations supported by the decision intelligence module.
     Rejects arbitrary or unsupported queries.
+
+    Phase 2 additions:
+    - OVERVIEW: snapshot-level summary (encounters, images, cameras, time coverage).
+    - SPECIES_ENCOUNTER_COUNTS: deduplicated encounter/species contributions.
+    - CAMERA_COMPARISON: per-camera/site encounter and species counts.
+    - DAILY_ACTIVITY: encounter counts grouped by calendar date.
+    - HOURLY_ACTIVITY: encounter counts grouped by hour-of-day (0-23).
+    - SPECIES_CAMERA_MATRIX: species × camera count matrix.
+    - EFFORT_NORMALISED_RATES: encounters per active camera-day.
     """
+    OVERVIEW = "overview"
     SPECIES_ENCOUNTER_COUNTS = "species_encounter_counts"
+    CAMERA_COMPARISON = "camera_comparison"
+    DAILY_ACTIVITY = "daily_activity"
+    HOURLY_ACTIVITY = "hourly_activity"
+    SPECIES_CAMERA_MATRIX = "species_camera_matrix"
+    EFFORT_NORMALISED_RATES = "effort_normalised_rates"
+    # Phase 1 legacy names kept for backward compatibility
     ACTIVITY_TIME_DISTRIBUTION = "activity_time_distribution"
     CROSS_CAMERA_ASSOCIATION = "cross_camera_association"
     CAMERA_ACTIVITY_SUMMARY = "camera_activity_summary"
@@ -102,6 +118,41 @@ class PredictionStatus(StrEnum):
     PARTIAL = "partial"
 
 
+class DataSourceMode(StrEnum):
+    """
+    Discriminates operational inference data from official dataset reference annotations.
+
+    Phase 2 extension. Never mix these modes in the same analytical computation.
+    - OPERATIONAL_PREDICTION: real model inference outputs from Harsh/Santosh pipeline.
+    - DATASET_REFERENCE: official human-annotated ground truth (e.g. Caltech Camera Traps).
+    """
+    OPERATIONAL_PREDICTION = "operational_prediction"
+    DATASET_REFERENCE = "dataset_reference"
+
+
+class ReviewOrderingMechanism(StrEnum):
+    """
+    Documents how multiple ReviewEvents for the same target are ordered
+    when resolving the effective label.
+
+    Phase 2 requirement: Shravan's resolver must not guess ordering.
+    """
+    BACKEND_REVISION = "backend_revision"   # Use dataset_revision increments (preferred)
+    SEQUENCE_NUMBER = "sequence_number"     # Explicit per-event sequence numbers
+    TIMESTAMP = "timestamp"                 # created_at (only if guaranteed unique+monotone)
+    UNRESOLVABLE = "unresolvable"           # Multiple reviews with ambiguous ordering
+
+
+class AnnotationSource(StrEnum):
+    """
+    Marks the source of an annotation entity in the dataset.
+    Used by the dataset adapter to track provenance.
+    """
+    CALTECH_CCT = "caltech_cct"              # Caltech Camera Traps COCO format
+    WILDSCOPE_INFERENCE = "wildscope_inference"  # WILDSCOPE operational pipeline
+    SYNTHETIC_FIXTURE = "synthetic_fixture"  # Test/example fixtures
+
+
 class ValidationErrorCode(StrEnum):
     """Stable error codes for contract and snapshot validation failures."""
     DUPLICATE_ID = "DUPLICATE_ID"
@@ -117,3 +168,8 @@ class ValidationErrorCode(StrEnum):
     UNSUPPORTED_SCHEMA_VERSION = "UNSUPPORTED_SCHEMA_VERSION"
     UNSUPPORTED_OPERATION = "UNSUPPORTED_OPERATION"
     SCHEMA_VIOLATION = "SCHEMA_VIOLATION"
+    # Phase 2 additions
+    AMBIGUOUS_REVIEW_ORDER = "AMBIGUOUS_REVIEW_ORDER"
+    CONFLICTING_REVIEW = "CONFLICTING_REVIEW"
+    DATASET_SOURCE_MISMATCH = "DATASET_SOURCE_MISMATCH"
+    MISSING_ENCOUNTER_SUPPORT = "MISSING_ENCOUNTER_SUPPORT"

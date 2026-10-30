@@ -95,6 +95,158 @@
       "title": "Camera",
       "type": "object"
     },
+    "DataSourceMode": {
+      "description": "Discriminates operational inference data from official dataset reference annotations.\n\nPhase 2 extension. Never mix these modes in the same analytical computation.\n- OPERATIONAL_PREDICTION: real model inference outputs from Harsh/Santosh pipeline.\n- DATASET_REFERENCE: official human-annotated ground truth (e.g. Caltech Camera Traps).",
+      "enum": [
+        "operational_prediction",
+        "dataset_reference"
+      ],
+      "title": "DataSourceMode",
+      "type": "string"
+    },
+    "DatasetReferenceAnnotation": {
+      "additionalProperties": false,
+      "description": "Official dataset annotation (e.g. from Caltech Camera Traps ground truth).\n\nPhase 2 discriminated type for dataset_reference mode.\nThis entity MUST NOT be mixed with operational_prediction Detection records.\nIt preserves:\n- Original source annotation ID and image ID.\n- Original category ID and category name exactly as published.\n- Namespace-prefixed internal identifiers to avoid collisions with operational IDs.\n- Bounding box in dataset-native COCO pixel format (xmin, ymin, width, height).\n\nKey distinctions from Detection:\n- No prediction run, model name, or confidence score (none are available).\n- No triage state (dataset annotations assert presence, not probability).\n- No invented review events.",
+      "properties": {
+        "id": {
+          "description": "Namespaced internal identifier, e.g. 'cct:ann:12345'. Original source annotation ID is preserved in source_annotation_id.",
+          "title": "Id",
+          "type": "string"
+        },
+        "observation_id": {
+          "description": "Reference to the Observation record for the annotated image.",
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "source_annotation_id": {
+          "description": "Original annotation ID as published by the dataset.",
+          "title": "Source Annotation Id",
+          "type": "string"
+        },
+        "source_image_id": {
+          "description": "Original image ID from the dataset (before namespacing).",
+          "title": "Source Image Id",
+          "type": "string"
+        },
+        "dataset_name": {
+          "description": "Dataset name, e.g. 'caltech_camera_traps'.",
+          "title": "Dataset Name",
+          "type": "string"
+        },
+        "dataset_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dataset version or release identifier if available.",
+          "title": "Dataset Version"
+        },
+        "category_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Original category ID exactly as published. Integer for CCT (COCO Camera Traps format).",
+          "title": "Category Id"
+        },
+        "category_name": {
+          "description": "Original category name exactly as published (e.g. 'coyote', 'empty', 'person').",
+          "title": "Category Name",
+          "type": "string"
+        },
+        "wildscope_taxon_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Mapped WILDSCOPE taxon identifier, if a canonical mapping exists. None if category is non-animal, empty, unknown, or unsupported. Mapping is documented in the dataset adapter.",
+          "title": "Wildscope Taxon Id"
+        },
+        "is_animal": {
+          "description": "True if category represents an animal species or group. False for 'empty', 'vehicle', 'person', and non-animal categories.",
+          "title": "Is Animal",
+          "type": "boolean"
+        },
+        "is_empty": {
+          "default": false,
+          "description": "True if category_name == 'empty' (no animal trigger).",
+          "title": "Is Empty",
+          "type": "boolean"
+        },
+        "bbox_coco": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Bounding box in COCO pixel format [xmin, ymin, width, height]. Preserved exactly from the source dataset. Not normalized.",
+          "title": "Bbox Coco"
+        },
+        "sequence_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dataset burst sequence ID (seq_id in CCT format).",
+          "title": "Sequence Id"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Source dataset provenance (URL, license, import timestamp).",
+          "title": "Provenance"
+        }
+      },
+      "required": [
+        "id",
+        "observation_id",
+        "source_annotation_id",
+        "source_image_id",
+        "dataset_name",
+        "category_id",
+        "category_name",
+        "is_animal"
+      ],
+      "title": "DatasetReferenceAnnotation",
+      "type": "object"
+    },
     "Detection": {
       "additionalProperties": false,
       "description": "Object-level animal detection and classification output.\nDistinguishes detection confidence from classification confidence,\nand explicitly tracks triage status and uncertainty.",
@@ -764,7 +916,7 @@
     },
     "ReviewEvent": {
       "additionalProperties": false,
-      "description": "Human review decision.\nOriginal model outputs remain immutable; reviews are append-only audit events.\nThe effective state is resolved transactionally by the backend.",
+      "description": "Human review decision.\nOriginal model outputs remain immutable; reviews are append-only audit events.\nThe effective state is resolved transactionally by the backend.\n\nPhase 2 extension:\n- sequence_number: backend-assigned monotone integer ordering reviews on the same target.\n  When supplied, the resolver uses this instead of created_at for deterministic ordering.\n  Santosh must supply this when review_ordering_mechanism = \"backend_revision\".",
       "properties": {
         "id": {
           "description": "Stable unique review event ID.",
@@ -830,6 +982,20 @@
           "default": null,
           "description": "Source dataset revision at time of review (for optimistic concurrency).",
           "title": "Expected Revision"
+        },
+        "sequence_number": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Phase 2: Backend-assigned monotone integer ordering ReviewEvents on the same target. When present, used as authoritative ordering; created_at is supplementary. expected_revision is a concurrency precondition, NOT an ordering mechanism.",
+          "title": "Sequence Number"
         }
       },
       "required": [
@@ -841,6 +1007,17 @@
       ],
       "title": "ReviewEvent",
       "type": "object"
+    },
+    "ReviewOrderingMechanism": {
+      "description": "Documents how multiple ReviewEvents for the same target are ordered\nwhen resolving the effective label.\n\nPhase 2 requirement: Shravan's resolver must not guess ordering.",
+      "enum": [
+        "backend_revision",
+        "sequence_number",
+        "timestamp",
+        "unresolvable"
+      ],
+      "title": "ReviewOrderingMechanism",
+      "type": "string"
     },
     "ScoreType": {
       "description": "Semantic nature of model prediction score.\nCrucial for preventing mistaking raw logits or uncalibrated softmax scores\nfor true posterior probabilities.",
@@ -858,7 +1035,7 @@
       "description": "Metadata describing snapshot provenance, structural schema version,\nand underlying transactional data revision.",
       "properties": {
         "schema_version": {
-          "default": "1.0.0",
+          "default": "1.1.0",
           "description": "Semantic version of the data contract schema.",
           "title": "Schema Version",
           "type": "string"
@@ -909,6 +1086,16 @@
           "description": "Flag indicating whether verified camera active intervals are supplied.",
           "title": "Has Monitoring Effort",
           "type": "boolean"
+        },
+        "data_source_mode": {
+          "$ref": "#/$defs/DataSourceMode",
+          "default": "operational_prediction",
+          "description": "Phase 2: discriminates operational model inference data from official dataset reference annotations. Analytics outputs are labelled accordingly."
+        },
+        "review_ordering_mechanism": {
+          "$ref": "#/$defs/ReviewOrderingMechanism",
+          "default": "backend_revision",
+          "description": "Phase 2: documents how multiple ReviewEvents for the same detection target are ordered when resolving effective labels. backend_revision requires Santosh to supply a per-event sequence_number field."
         }
       },
       "required": [
@@ -1156,6 +1343,14 @@
       ],
       "default": null,
       "description": "Reserve boundaries and spatial context (optional)."
+    },
+    "reference_annotations": {
+      "description": "Phase 2: Official dataset reference annotations (e.g. Caltech Camera Traps). Populated only when data_source_mode == 'dataset_reference'. MUST NOT be mixed with operational_prediction Detection records in analytics.",
+      "items": {
+        "$ref": "#/$defs/DatasetReferenceAnnotation"
+      },
+      "title": "Reference Annotations",
+      "type": "array"
     }
   },
   "required": [

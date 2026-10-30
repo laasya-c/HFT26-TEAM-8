@@ -1,10 +1,16 @@
 """
 WILDSCOPE Decision Intelligence & Analytics Module
-Snapshot Contracts - Phase 1
+Snapshot Contracts - Phase 1 / Phase 2
 
 Defines the complete snapshot model representing a point-in-time state
 of cameras, media, observations, detections, encounters, reviews, effort,
 and spatial context.
+
+Phase 2 additions:
+- data_source_mode: discriminates operational_prediction from dataset_reference.
+- review_ordering_mechanism: documents how multi-review ordering is resolved.
+- Schema version bumped to 1.1.0 (backward-compatible additive change).
+  Existing 1.0.0 snapshots remain accepted; 1.1.0 adds optional fields.
 """
 
 from __future__ import annotations
@@ -16,6 +22,7 @@ from pydantic import Field, field_validator
 from wildscope_analytics.contracts.entities import (
     BaseContractModel,
     Camera,
+    DatasetReferenceAnnotation,
     Detection,
     Encounter,
     MediaAsset,
@@ -25,9 +32,13 @@ from wildscope_analytics.contracts.entities import (
     ReviewEvent,
     SpatialContext,
 )
+from wildscope_analytics.contracts.enums import (
+    DataSourceMode,
+    ReviewOrderingMechanism,
+)
 
-CURRENT_SCHEMA_VERSION = "1.0.0"
-SUPPORTED_SCHEMA_VERSIONS = {"1.0.0"}
+CURRENT_SCHEMA_VERSION = "1.1.0"
+SUPPORTED_SCHEMA_VERSIONS = {"1.0.0", "1.1.0"}
 
 
 class SnapshotMetadata(BaseContractModel):
@@ -63,6 +74,21 @@ class SnapshotMetadata(BaseContractModel):
     has_monitoring_effort: bool = Field(
         default=False,
         description="Flag indicating whether verified camera active intervals are supplied."
+    )
+    data_source_mode: DataSourceMode = Field(
+        default=DataSourceMode.OPERATIONAL_PREDICTION,
+        description=(
+            "Phase 2: discriminates operational model inference data from official dataset "
+            "reference annotations. Analytics outputs are labelled accordingly."
+        ),
+    )
+    review_ordering_mechanism: ReviewOrderingMechanism = Field(
+        default=ReviewOrderingMechanism.BACKEND_REVISION,
+        description=(
+            "Phase 2: documents how multiple ReviewEvents for the same detection target "
+            "are ordered when resolving effective labels. "
+            "backend_revision requires Santosh to supply a per-event sequence_number field."
+        ),
     )
 
     @field_validator("created_at")
@@ -124,4 +150,12 @@ class Snapshot(BaseContractModel):
     spatial_context: SpatialContext | None = Field(
         default=None,
         description="Reserve boundaries and spatial context (optional)."
+    )
+    reference_annotations: list[DatasetReferenceAnnotation] = Field(
+        default_factory=list,
+        description=(
+            "Phase 2: Official dataset reference annotations (e.g. Caltech Camera Traps). "
+            "Populated only when data_source_mode == 'dataset_reference'. "
+            "MUST NOT be mixed with operational_prediction Detection records in analytics."
+        ),
     )
