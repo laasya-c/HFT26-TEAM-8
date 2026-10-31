@@ -1,0 +1,1412 @@
+{
+  "$defs": {
+    "CalibrationStatus": {
+      "description": "Status of model probability calibration.",
+      "enum": [
+        "uncalibrated",
+        "calibrated",
+        "not_applicable"
+      ],
+      "title": "CalibrationStatus",
+      "type": "string"
+    },
+    "Camera": {
+      "additionalProperties": false,
+      "description": "Physical camera trap device record.\nSupports location-based grouping via site_id even when geographical\ncoordinates are unknown or withheld.",
+      "properties": {
+        "id": {
+          "description": "Stable unique identifier for the camera.",
+          "title": "Id",
+          "type": "string"
+        },
+        "site_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional site or station identifier for hierarchical grouping.",
+          "title": "Site Id"
+        },
+        "latitude": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "WGS84 latitude in decimal degrees [-90, 90].",
+          "title": "Latitude"
+        },
+        "longitude": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "WGS84 longitude in decimal degrees [-180, 180].",
+          "title": "Longitude"
+        },
+        "timezone": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Declared IANA timezone identifier, e.g. 'Asia/Kolkata'.",
+          "title": "Timezone"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Origin tracking for supplied camera metadata.",
+          "title": "Provenance"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "Camera",
+      "type": "object"
+    },
+    "DataSourceMode": {
+      "description": "Discriminates operational inference data from official dataset reference annotations.\n\nPhase 2 extension. Never mix these modes in the same analytical computation.\n- OPERATIONAL_PREDICTION: real model inference outputs from Harsh/Santosh pipeline.\n- DATASET_REFERENCE: official human-annotated ground truth (e.g. Caltech Camera Traps).",
+      "enum": [
+        "operational_prediction",
+        "dataset_reference"
+      ],
+      "title": "DataSourceMode",
+      "type": "string"
+    },
+    "DatasetReferenceAnnotation": {
+      "additionalProperties": false,
+      "description": "Official dataset annotation (e.g. from Caltech Camera Traps ground truth).\n\nPhase 2 discriminated type for dataset_reference mode.\nThis entity MUST NOT be mixed with operational_prediction Detection records.\nIt preserves:\n- Original source annotation ID and image ID.\n- Original category ID and category name exactly as published.\n- Namespace-prefixed internal identifiers to avoid collisions with operational IDs.\n- Bounding box in dataset-native COCO pixel format (xmin, ymin, width, height).\n\nKey distinctions from Detection:\n- No prediction run, model name, or confidence score (none are available).\n- No triage state (dataset annotations assert presence, not probability).\n- No invented review events.",
+      "properties": {
+        "id": {
+          "description": "Namespaced internal identifier, e.g. 'cct:ann:12345'. Original source annotation ID is preserved in source_annotation_id.",
+          "title": "Id",
+          "type": "string"
+        },
+        "observation_id": {
+          "description": "Reference to the Observation record for the annotated image.",
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "source_annotation_id": {
+          "description": "Original annotation ID as published by the dataset.",
+          "title": "Source Annotation Id",
+          "type": "string"
+        },
+        "source_image_id": {
+          "description": "Original image ID from the dataset (before namespacing).",
+          "title": "Source Image Id",
+          "type": "string"
+        },
+        "dataset_name": {
+          "description": "Dataset name, e.g. 'caltech_camera_traps'.",
+          "title": "Dataset Name",
+          "type": "string"
+        },
+        "dataset_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dataset version or release identifier if available.",
+          "title": "Dataset Version"
+        },
+        "category_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Original category ID exactly as published. Integer for CCT (COCO Camera Traps format).",
+          "title": "Category Id"
+        },
+        "category_name": {
+          "description": "Original category name exactly as published (e.g. 'coyote', 'empty', 'person').",
+          "title": "Category Name",
+          "type": "string"
+        },
+        "wildscope_taxon_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Mapped WILDSCOPE taxon identifier, if a canonical mapping exists. None if category is non-animal, empty, unknown, or unsupported. Mapping is documented in the dataset adapter.",
+          "title": "Wildscope Taxon Id"
+        },
+        "is_animal": {
+          "description": "True if category represents an animal species or group. False for 'empty', 'vehicle', 'person', and non-animal categories.",
+          "title": "Is Animal",
+          "type": "boolean"
+        },
+        "is_empty": {
+          "default": false,
+          "description": "True if category_name == 'empty' (no animal trigger).",
+          "title": "Is Empty",
+          "type": "boolean"
+        },
+        "bbox_coco": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Bounding box in COCO pixel format [xmin, ymin, width, height]. Preserved exactly from the source dataset. Not normalized.",
+          "title": "Bbox Coco"
+        },
+        "sequence_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dataset burst sequence ID (seq_id in CCT format).",
+          "title": "Sequence Id"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Source dataset provenance (URL, license, import timestamp).",
+          "title": "Provenance"
+        }
+      },
+      "required": [
+        "id",
+        "observation_id",
+        "source_annotation_id",
+        "source_image_id",
+        "dataset_name",
+        "category_id",
+        "category_name",
+        "is_animal"
+      ],
+      "title": "DatasetReferenceAnnotation",
+      "type": "object"
+    },
+    "Detection": {
+      "additionalProperties": false,
+      "description": "Object-level animal detection and classification output.\nDistinguishes detection confidence from classification confidence,\nand explicitly tracks triage status and uncertainty.",
+      "properties": {
+        "id": {
+          "description": "Stable unique detection ID.",
+          "title": "Id",
+          "type": "string"
+        },
+        "observation_id": {
+          "description": "Reference to parent Observation record.",
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Reference to PredictionRun that generated this output.",
+          "title": "Run Id"
+        },
+        "triage_state": {
+          "$ref": "#/$defs/TriageState",
+          "default": "animal_detected",
+          "description": "Triage outcome (likely_empty, animal_detected, processing_failure, unsupported_taxon)."
+        },
+        "animal_detection_confidence": {
+          "description": "Confidence that an animal is present in the frame/crop [0.0, 1.0].",
+          "title": "Animal Detection Confidence",
+          "type": "number"
+        },
+        "predicted_taxon_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Canonical taxon identifier if species classification succeeded.",
+          "title": "Predicted Taxon Id"
+        },
+        "raw_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original unmodified label emitted by the vision classifier.",
+          "title": "Raw Label"
+        },
+        "classification_confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Species classification score in [0.0, 1.0].",
+          "title": "Classification Confidence"
+        },
+        "score_type": {
+          "$ref": "#/$defs/ScoreType",
+          "default": "softmax",
+          "description": "Output type of the classification score."
+        },
+        "calibration_status": {
+          "$ref": "#/$defs/CalibrationStatus",
+          "default": "uncalibrated",
+          "description": "Probability calibration status."
+        },
+        "bbox": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NormalizedBBox"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Normalized bounding box of detection in frame."
+        },
+        "alternatives": {
+          "description": "Documented alternative species hypotheses.",
+          "items": {
+            "$ref": "#/$defs/TaxonAlternative"
+          },
+          "title": "Alternatives",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "observation_id",
+        "animal_detection_confidence"
+      ],
+      "title": "Detection",
+      "type": "object"
+    },
+    "Encounter": {
+      "additionalProperties": false,
+      "description": "Operational grouping of observations within a camera trap temporal session.\nRepresents an encounter event; does NOT establish individual animal identity\nor population size.",
+      "properties": {
+        "id": {
+          "description": "Stable unique encounter identifier.",
+          "title": "Id",
+          "type": "string"
+        },
+        "camera_id": {
+          "description": "Reference to Camera where encounter occurred.",
+          "title": "Camera Id",
+          "type": "string"
+        },
+        "member_observation_ids": {
+          "description": "Observation IDs included in this encounter.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Member Observation Ids",
+          "type": "array"
+        },
+        "member_detection_ids": {
+          "description": "Detection IDs included in this encounter.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Member Detection Ids",
+          "type": "array"
+        },
+        "start_time": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Encounter start timestamp (timezone-aware).",
+          "title": "Start Time"
+        },
+        "end_time": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Encounter end timestamp (timezone-aware).",
+          "title": "End Time"
+        },
+        "rule_version": {
+          "default": "v1_time_gap",
+          "description": "Grouping algorithm version (e.g. 30-minute burst gap).",
+          "title": "Rule Version",
+          "type": "string"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Evidence trace and grouping metadata.",
+          "title": "Provenance"
+        }
+      },
+      "required": [
+        "id",
+        "camera_id"
+      ],
+      "title": "Encounter",
+      "type": "object"
+    },
+    "EncounterProcessingStatus": {
+      "description": "Status of encounter grouping processing in the vision/clustering pipeline (Harsh).\nExplicitly distinguishes whether encounter grouping is available, pending, completed, or failed.",
+      "enum": [
+        "unavailable",
+        "pending",
+        "completed",
+        "failed"
+      ],
+      "title": "EncounterProcessingStatus",
+      "type": "string"
+    },
+    "MediaAsset": {
+      "additionalProperties": false,
+      "description": "Source raw media file (image or video) stored in object/file storage.",
+      "properties": {
+        "id": {
+          "description": "Stable unique identifier for media asset.",
+          "title": "Id",
+          "type": "string"
+        },
+        "media_type": {
+          "$ref": "#/$defs/MediaType",
+          "default": "image",
+          "description": "image or video."
+        },
+        "camera_id": {
+          "description": "Reference to Camera where recorded.",
+          "title": "Camera Id",
+          "type": "string"
+        },
+        "storage_key": {
+          "description": "Internal storage identifier or path key.",
+          "title": "Storage Key",
+          "type": "string"
+        },
+        "raw_timestamp": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Unparsed raw timestamp string from EXIF or filename.",
+          "title": "Raw Timestamp"
+        },
+        "captured_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Resolved timezone-aware capture timestamp.",
+          "title": "Captured At"
+        },
+        "timezone_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How timezone was resolved (e.g. 'camera_profile', 'exif_offset').",
+          "title": "Timezone Source"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Source provenance details.",
+          "title": "Provenance"
+        }
+      },
+      "required": [
+        "id",
+        "camera_id",
+        "storage_key"
+      ],
+      "title": "MediaAsset",
+      "type": "object"
+    },
+    "MediaType": {
+      "description": "Type of ingested camera-trap media.",
+      "enum": [
+        "image",
+        "video"
+      ],
+      "title": "MediaType",
+      "type": "string"
+    },
+    "MonitoringEffort": {
+      "additionalProperties": false,
+      "description": "Explicit documented operational effort intervals for a camera.\nUptime is NOT inferred from image frequency or span.",
+      "properties": {
+        "id": {
+          "description": "Stable unique monitoring effort record ID.",
+          "title": "Id",
+          "type": "string"
+        },
+        "camera_id": {
+          "description": "Reference to Camera.",
+          "title": "Camera Id",
+          "type": "string"
+        },
+        "active_intervals": {
+          "description": "Disjoint, non-overlapping active monitoring periods.",
+          "items": {
+            "$ref": "#/$defs/TimeInterval"
+          },
+          "title": "Active Intervals",
+          "type": "array"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Source of effort record (e.g. 'ranger_log', 'telemetry_heartbeat').",
+          "title": "Source"
+        },
+        "completeness_notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Known limitations or gaps in effort tracking.",
+          "title": "Completeness Notes"
+        }
+      },
+      "required": [
+        "id",
+        "camera_id"
+      ],
+      "title": "MonitoringEffort",
+      "type": "object"
+    },
+    "NormalizedBBox": {
+      "additionalProperties": false,
+      "description": "Normalized bounding box.\nConvention: Coordinates in [0.0, 1.0] relative to frame dimensions.\n(0, 0) is top-left, (1, 1) is bottom-right.",
+      "properties": {
+        "x_min": {
+          "description": "Left edge normalized coordinate [0, 1].",
+          "title": "X Min",
+          "type": "number"
+        },
+        "y_min": {
+          "description": "Top edge normalized coordinate [0, 1].",
+          "title": "Y Min",
+          "type": "number"
+        },
+        "x_max": {
+          "description": "Right edge normalized coordinate [0, 1].",
+          "title": "X Max",
+          "type": "number"
+        },
+        "y_max": {
+          "description": "Bottom edge normalized coordinate [0, 1].",
+          "title": "Y Max",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x_min",
+        "y_min",
+        "x_max",
+        "y_max"
+      ],
+      "title": "NormalizedBBox",
+      "type": "object"
+    },
+    "Observation": {
+      "additionalProperties": false,
+      "description": "An individual frame or standalone image observation event.\nLinks detections to source media and physical camera.",
+      "properties": {
+        "id": {
+          "description": "Stable unique observation identifier.",
+          "title": "Id",
+          "type": "string"
+        },
+        "camera_id": {
+          "description": "Reference to physical Camera.",
+          "title": "Camera Id",
+          "type": "string"
+        },
+        "source_media_id": {
+          "description": "Reference to MediaAsset.",
+          "title": "Source Media Id",
+          "type": "string"
+        },
+        "frame_offset_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Video frame offset in milliseconds (null for still photos).",
+          "title": "Frame Offset Ms"
+        },
+        "captured_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Resolved timezone-aware capture timestamp.",
+          "title": "Captured At"
+        },
+        "raw_timestamp": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Raw EXIF timestamp string preserved for audit.",
+          "title": "Raw Timestamp"
+        },
+        "timezone_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Method used to establish timezone.",
+          "title": "Timezone Source"
+        },
+        "width_px": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Source image width in pixels.",
+          "title": "Width Px"
+        },
+        "height_px": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Source image height in pixels.",
+          "title": "Height Px"
+        },
+        "detection_ids": {
+          "description": "Ordered list of Detection IDs belonging to this observation.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Detection Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "camera_id",
+        "source_media_id"
+      ],
+      "title": "Observation",
+      "type": "object"
+    },
+    "PredictionRun": {
+      "additionalProperties": false,
+      "description": "Audit record of an inference model run.\nEnsures complete traceability of model hashes, device, and settings.",
+      "properties": {
+        "id": {
+          "description": "Stable unique prediction run identifier.",
+          "title": "Id",
+          "type": "string"
+        },
+        "model_version": {
+          "description": "Version identifier of vision model artifact.",
+          "title": "Model Version",
+          "type": "string"
+        },
+        "settings_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hash of inference hyper-parameters.",
+          "title": "Settings Hash"
+        },
+        "device": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Execution device (e.g. 'cuda:0', 'cpu').",
+          "title": "Device"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Job execution start time.",
+          "title": "Started At"
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Job completion time.",
+          "title": "Completed At"
+        },
+        "status": {
+          "$ref": "#/$defs/PredictionStatus",
+          "default": "completed",
+          "description": "Job completion status."
+        },
+        "cache_hit": {
+          "default": false,
+          "description": "Whether output was served from cache.",
+          "title": "Cache Hit",
+          "type": "boolean"
+        },
+        "failure_codes": {
+          "description": "Non-fatal failure codes.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Failure Codes",
+          "type": "array"
+        },
+        "input_content_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hash of input media payload.",
+          "title": "Input Content Hash"
+        },
+        "model_artifact_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hash of weights artifact.",
+          "title": "Model Artifact Hash"
+        },
+        "preprocessing_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hash of transform pipeline.",
+          "title": "Preprocessing Hash"
+        }
+      },
+      "required": [
+        "id",
+        "model_version"
+      ],
+      "title": "PredictionRun",
+      "type": "object"
+    },
+    "PredictionStatus": {
+      "description": "Status of an inference execution run.",
+      "enum": [
+        "completed",
+        "failed",
+        "partial"
+      ],
+      "title": "PredictionStatus",
+      "type": "string"
+    },
+    "ReviewDecision": {
+      "description": "Human review decision on a target detection or encounter.\nReviews are append-only audit events and do not mutate original model outputs.",
+      "enum": [
+        "confirm_species",
+        "correct_species",
+        "mark_unknown",
+        "reject_detection",
+        "flag_for_expert"
+      ],
+      "title": "ReviewDecision",
+      "type": "string"
+    },
+    "ReviewEvent": {
+      "additionalProperties": false,
+      "description": "Human review decision.\nOriginal model outputs remain immutable; reviews are append-only audit events.\nThe effective state is resolved transactionally by the backend.\n\nPhase 2 extension:\n- sequence_number: backend-assigned monotone integer ordering reviews on the same target.\n  When supplied, the resolver uses this instead of created_at for deterministic ordering.\n  Santosh must supply this when review_ordering_mechanism = \"backend_revision\".",
+      "properties": {
+        "id": {
+          "description": "Stable unique review event ID.",
+          "title": "Id",
+          "type": "string"
+        },
+        "target_id": {
+          "description": "Reference to target Detection ID (or Encounter ID).",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "decision": {
+          "$ref": "#/$defs/ReviewDecision",
+          "description": "Review outcome decision."
+        },
+        "corrected_taxon_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Required if decision is CORRECT_SPECIES, forbidden if REJECT_DETECTION.",
+          "title": "Corrected Taxon Id"
+        },
+        "reviewer": {
+          "description": "Reviewer identifier or username.",
+          "minLength": 1,
+          "title": "Reviewer",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional reasoning or notes.",
+          "title": "Reason"
+        },
+        "created_at": {
+          "description": "Timestamp when review was executed.",
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "expected_revision": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Source dataset revision at time of review (for optimistic concurrency).",
+          "title": "Expected Revision"
+        },
+        "sequence_number": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Phase 2: Backend-assigned monotone integer ordering ReviewEvents on the same target. When present, used as authoritative ordering; created_at is supplementary. expected_revision is a concurrency precondition, NOT an ordering mechanism.",
+          "title": "Sequence Number"
+        }
+      },
+      "required": [
+        "id",
+        "target_id",
+        "decision",
+        "reviewer",
+        "created_at"
+      ],
+      "title": "ReviewEvent",
+      "type": "object"
+    },
+    "ReviewOrderingMechanism": {
+      "description": "Documents how multiple ReviewEvents for the same target are ordered\nwhen resolving the effective label.\n\nPhase 2 requirement: Shravan's resolver must not guess ordering.",
+      "enum": [
+        "backend_revision",
+        "sequence_number",
+        "timestamp",
+        "unresolvable"
+      ],
+      "title": "ReviewOrderingMechanism",
+      "type": "string"
+    },
+    "ScoreType": {
+      "description": "Semantic nature of model prediction score.\nCrucial for preventing mistaking raw logits or uncalibrated softmax scores\nfor true posterior probabilities.",
+      "enum": [
+        "raw",
+        "softmax",
+        "calibrated",
+        "probability"
+      ],
+      "title": "ScoreType",
+      "type": "string"
+    },
+    "SnapshotMetadata": {
+      "additionalProperties": false,
+      "description": "Metadata describing snapshot provenance, structural schema version,\nand underlying transactional data revision.",
+      "properties": {
+        "schema_version": {
+          "default": "1.3.0",
+          "description": "Semantic version of the data contract schema.",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "dataset_revision": {
+          "description": "Transactional data revision counter identifying this data state.",
+          "minimum": 0,
+          "title": "Dataset Revision",
+          "type": "integer"
+        },
+        "created_at": {
+          "description": "Timezone-aware timestamp when snapshot was assembled.",
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "source_system": {
+          "default": "WILDSCOPE_BACKEND",
+          "description": "System or worker generating this snapshot.",
+          "title": "Source System",
+          "type": "string"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Traceability metadata for snapshot assembly.",
+          "title": "Provenance"
+        },
+        "has_spatial_context": {
+          "default": false,
+          "description": "Flag indicating whether spatial zones and layers are included.",
+          "title": "Has Spatial Context",
+          "type": "boolean"
+        },
+        "has_monitoring_effort": {
+          "default": false,
+          "description": "Flag indicating whether verified camera active intervals are supplied.",
+          "title": "Has Monitoring Effort",
+          "type": "boolean"
+        },
+        "data_source_mode": {
+          "$ref": "#/$defs/DataSourceMode",
+          "default": "operational_prediction",
+          "description": "Phase 2: discriminates operational model inference data from official dataset reference annotations. Analytics outputs are labelled accordingly."
+        },
+        "review_ordering_mechanism": {
+          "$ref": "#/$defs/ReviewOrderingMechanism",
+          "default": "backend_revision",
+          "description": "Phase 2: documents how multiple ReviewEvents for the same detection target are ordered when resolving effective labels. backend_revision requires Santosh to supply a per-event sequence_number field."
+        },
+        "encounter_processing_status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EncounterProcessingStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Phase 3: status of encounter grouping processing (Harsh's group_encounters). When None (legacy 1.0.0/1.1.0 snapshot), conservative compatibility treats an empty encounters list as UNAVAILABLE."
+        }
+      },
+      "required": [
+        "dataset_revision",
+        "created_at"
+      ],
+      "title": "SnapshotMetadata",
+      "type": "object"
+    },
+    "SpatialContext": {
+      "additionalProperties": false,
+      "description": "Optional spatial context provided with a snapshot.\nCamera coordinates are not exact animal coordinates.",
+      "properties": {
+        "crs": {
+          "default": "EPSG:4326",
+          "description": "Coordinate Reference System.",
+          "title": "Crs",
+          "type": "string"
+        },
+        "zones": {
+          "description": "Defined reserve boundaries or management zones.",
+          "items": {
+            "$ref": "#/$defs/SpatialZone"
+          },
+          "title": "Zones",
+          "type": "array"
+        },
+        "candidate_sites": {
+          "description": "Potential deployment sites for adaptive coverage optimization.",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Candidate Sites",
+          "type": "array"
+        },
+        "coverage_assumptions": {
+          "additionalProperties": true,
+          "description": "Documented sensor range or viewshed assumptions.",
+          "title": "Coverage Assumptions",
+          "type": "object"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Source of GIS layers and spatial metadata.",
+          "title": "Provenance"
+        }
+      },
+      "title": "SpatialContext",
+      "type": "object"
+    },
+    "SpatialZone": {
+      "additionalProperties": false,
+      "description": "Supplied spatial zone boundary (e.g. park core, corridor, buffer zone).",
+      "properties": {
+        "id": {
+          "description": "Stable zone identifier.",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human-readable zone label.",
+          "title": "Name",
+          "type": "string"
+        },
+        "zone_type": {
+          "description": "e.g. 'core_reserve', 'community_buffer', 'road_corridor'.",
+          "title": "Zone Type",
+          "type": "string"
+        },
+        "geometry": {
+          "additionalProperties": true,
+          "description": "GeoJSON-compatible geometry dictionary (Polygon, MultiPolygon, etc.).",
+          "title": "Geometry",
+          "type": "object"
+        },
+        "valid_from": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Start of temporal applicability.",
+          "title": "Valid From"
+        },
+        "valid_to": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "End of temporal applicability.",
+          "title": "Valid To"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "zone_type",
+        "geometry"
+      ],
+      "title": "SpatialZone",
+      "type": "object"
+    },
+    "TaxonAlternative": {
+      "additionalProperties": false,
+      "description": "Documented candidate species prediction with confidence score.",
+      "properties": {
+        "taxon_id": {
+          "description": "Alternative taxon / species identifier.",
+          "title": "Taxon Id",
+          "type": "string"
+        },
+        "score": {
+          "description": "Model output score in [0.0, 1.0].",
+          "title": "Score",
+          "type": "number"
+        },
+        "raw_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Raw model class string.",
+          "title": "Raw Label"
+        }
+      },
+      "required": [
+        "taxon_id",
+        "score"
+      ],
+      "title": "TaxonAlternative",
+      "type": "object"
+    },
+    "TimeInterval": {
+      "additionalProperties": false,
+      "description": "A bounded time interval for monitoring effort.",
+      "properties": {
+        "start": {
+          "description": "Interval start timestamp.",
+          "format": "date-time",
+          "title": "Start",
+          "type": "string"
+        },
+        "end": {
+          "description": "Interval end timestamp.",
+          "format": "date-time",
+          "title": "End",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "TimeInterval",
+      "type": "object"
+    },
+    "TriageState": {
+      "description": "Triage status from observation intelligence.\nExplicitly distinguishes empty frames, valid animal detections,\nprocessing failures, and unsupported taxa.",
+      "enum": [
+        "likely_empty",
+        "animal_detected",
+        "processing_failure",
+        "unsupported_taxon"
+      ],
+      "title": "TriageState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Top-level snapshot envelope exchanged between backend persistence\nand analytical/decision intelligence modules.\nEntities are normalized and linked via stable references.",
+  "properties": {
+    "metadata": {
+      "$ref": "#/$defs/SnapshotMetadata",
+      "description": "Snapshot header and provenance."
+    },
+    "cameras": {
+      "description": "Camera traps present in snapshot.",
+      "items": {
+        "$ref": "#/$defs/Camera"
+      },
+      "title": "Cameras",
+      "type": "array"
+    },
+    "media_assets": {
+      "description": "Original media records.",
+      "items": {
+        "$ref": "#/$defs/MediaAsset"
+      },
+      "title": "Media Assets",
+      "type": "array"
+    },
+    "observations": {
+      "description": "Observation records (individual images or sampled frames).",
+      "items": {
+        "$ref": "#/$defs/Observation"
+      },
+      "title": "Observations",
+      "type": "array"
+    },
+    "prediction_runs": {
+      "description": "Audit records of vision model inference executions.",
+      "items": {
+        "$ref": "#/$defs/PredictionRun"
+      },
+      "title": "Prediction Runs",
+      "type": "array"
+    },
+    "detections": {
+      "description": "Object-level detections with scores and triage state.",
+      "items": {
+        "$ref": "#/$defs/Detection"
+      },
+      "title": "Detections",
+      "type": "array"
+    },
+    "encounters": {
+      "description": "Operational groupings of observations.",
+      "items": {
+        "$ref": "#/$defs/Encounter"
+      },
+      "title": "Encounters",
+      "type": "array"
+    },
+    "reviews": {
+      "description": "Append-only human review audit history.",
+      "items": {
+        "$ref": "#/$defs/ReviewEvent"
+      },
+      "title": "Reviews",
+      "type": "array"
+    },
+    "monitoring_efforts": {
+      "description": "Camera operational uptime intervals (optional).",
+      "items": {
+        "$ref": "#/$defs/MonitoringEffort"
+      },
+      "title": "Monitoring Efforts",
+      "type": "array"
+    },
+    "spatial_context": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SpatialContext"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Reserve boundaries and spatial context (optional)."
+    },
+    "reference_annotations": {
+      "description": "Phase 2: Official dataset reference annotations (e.g. Caltech Camera Traps). Populated only when data_source_mode == 'dataset_reference'. MUST NOT be mixed with operational_prediction Detection records in analytics.",
+      "items": {
+        "$ref": "#/$defs/DatasetReferenceAnnotation"
+      },
+      "title": "Reference Annotations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "metadata"
+  ],
+  "title": "Snapshot",
+  "type": "object"
+}

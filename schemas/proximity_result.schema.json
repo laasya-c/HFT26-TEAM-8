@@ -1,0 +1,188 @@
+{
+  "$defs": {
+    "PositionType": {
+      "description": "Nature of spatial position coordinates being evaluated.\nMaintains rigorous distinction between fixed camera sites and estimated animal locations.",
+      "enum": [
+        "camera_site",
+        "estimated_animal_position",
+        "observation_location"
+      ],
+      "title": "PositionType",
+      "type": "string"
+    },
+    "ProximityRelation": {
+      "description": "Topological relationship between a point and a spatial region/boundary.",
+      "enum": [
+        "inside",
+        "outside",
+        "boundary",
+        "indeterminate"
+      ],
+      "title": "ProximityRelation",
+      "type": "string"
+    },
+    "TargetProximityItem": {
+      "additionalProperties": false,
+      "description": "Proximity evaluation between a target location and a spatial zone/infrastructure (Feature F14).",
+      "properties": {
+        "target_id": {
+          "description": "Target point identifier.",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "position_type": {
+          "$ref": "#/$defs/PositionType",
+          "description": "Nature of location (camera_site, estimated_animal_position, etc.)."
+        },
+        "zone_id": {
+          "description": "Spatial zone or infrastructure identifier.",
+          "title": "Zone Id",
+          "type": "string"
+        },
+        "zone_name": {
+          "description": "Human-readable zone label.",
+          "title": "Zone Name",
+          "type": "string"
+        },
+        "zone_type": {
+          "description": "Zone category (e.g. core_reserve, road_corridor).",
+          "title": "Zone Type",
+          "type": "string"
+        },
+        "relation": {
+          "$ref": "#/$defs/ProximityRelation",
+          "description": "Topological relationship (inside, outside, boundary, indeterminate)."
+        },
+        "region_distance_meters": {
+          "description": "Shortest distance to zone interior (0.0 if inside).",
+          "minimum": 0.0,
+          "title": "Region Distance Meters",
+          "type": "number"
+        },
+        "boundary_distance_meters": {
+          "description": "Shortest distance to zone boundary in meters.",
+          "minimum": 0.0,
+          "title": "Boundary Distance Meters",
+          "type": "number"
+        },
+        "within_threshold": {
+          "description": "Whether location is nominally within declared proximity threshold.",
+          "title": "Within Threshold",
+          "type": "boolean"
+        },
+        "threshold_status": {
+          "default": "definitely_outside",
+          "description": "'definitely_within', 'definitely_outside', or 'uncertain' due to positional uncertainty.",
+          "title": "Threshold Status",
+          "type": "string"
+        },
+        "proximity_threshold_meters": {
+          "description": "Evaluation threshold in meters.",
+          "minimum": 0.0,
+          "title": "Proximity Threshold Meters",
+          "type": "number"
+        },
+        "uncertainty_radius_meters": {
+          "default": 0.0,
+          "description": "Positional uncertainty radius in meters.",
+          "minimum": 0.0,
+          "title": "Uncertainty Radius Meters",
+          "type": "number"
+        },
+        "uncertainty_status": {
+          "default": "unassessed",
+          "description": "'assessed' or 'unassessed'.",
+          "title": "Uncertainty Status",
+          "type": "string"
+        },
+        "position_description": {
+          "description": "Clear contextual description distinguishing camera site from animal position.",
+          "title": "Position Description",
+          "type": "string"
+        },
+        "warning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Caveats or notes on boundary uncertainty.",
+          "title": "Warning"
+        }
+      },
+      "required": [
+        "target_id",
+        "position_type",
+        "zone_id",
+        "zone_name",
+        "zone_type",
+        "relation",
+        "region_distance_meters",
+        "boundary_distance_meters",
+        "within_threshold",
+        "proximity_threshold_meters",
+        "position_description"
+      ],
+      "title": "TargetProximityItem",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Complete typed payload for geofencing and proximity indicators (Feature F14).",
+  "properties": {
+    "data_source_mode": {
+      "description": "Snapshot data source mode.",
+      "title": "Data Source Mode",
+      "type": "string"
+    },
+    "metric": {
+      "default": "proximity_indicators",
+      "description": "Operational metric identifier.",
+      "title": "Metric",
+      "type": "string"
+    },
+    "projection_method": {
+      "description": "Projection or distance measurement method.",
+      "title": "Projection Method",
+      "type": "string"
+    },
+    "targets_evaluated_count": {
+      "description": "Total targets evaluated.",
+      "minimum": 0,
+      "title": "Targets Evaluated Count",
+      "type": "integer"
+    },
+    "zones_evaluated_count": {
+      "description": "Total zones/infrastructure features evaluated.",
+      "minimum": 0,
+      "title": "Zones Evaluated Count",
+      "type": "integer"
+    },
+    "evaluations": {
+      "description": "Pairwise target-zone proximity evaluations.",
+      "items": {
+        "$ref": "#/$defs/TargetProximityItem"
+      },
+      "title": "Evaluations",
+      "type": "array"
+    },
+    "disclaimer": {
+      "default": "Proximity indicators reflect geometric distance between supplied coordinates and zone boundaries under the declared projection. For camera sites, this indicates physical device placement proximity, NOT animal geofence crossing. Positional uncertainty can cause indeterminate boundary relations. Descriptive indicator only; no threat or danger score is assigned.",
+      "description": "Mandatory scientific disclaimer.",
+      "title": "Disclaimer",
+      "type": "string"
+    }
+  },
+  "required": [
+    "data_source_mode",
+    "projection_method",
+    "targets_evaluated_count",
+    "zones_evaluated_count"
+  ],
+  "title": "ProximityResult",
+  "type": "object"
+}

@@ -1,0 +1,137 @@
+{
+  "$defs": {
+    "SpatialSourceType": {
+      "description": "Source and epistemic classification of spatial geometry.\nExplicitly distinguishes measured field data from model assumptions or scenarios.",
+      "enum": [
+        "measured",
+        "assumed",
+        "hypothetical",
+        "synthetic"
+      ],
+      "title": "SpatialSourceType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Complete typed payload for monitoring blind spot analysis (Feature F08).",
+  "properties": {
+    "data_source_mode": {
+      "description": "Snapshot data source mode.",
+      "title": "Data Source Mode",
+      "type": "string"
+    },
+    "metric": {
+      "default": "monitoring_blind_spots",
+      "description": "Operational metric identifier.",
+      "title": "Metric",
+      "type": "string"
+    },
+    "projection_method": {
+      "description": "Geodesic or projection method used for planar area.",
+      "title": "Projection Method",
+      "type": "string"
+    },
+    "study_area_sq_meters": {
+      "description": "Total study area in square meters.",
+      "minimum": 0.0,
+      "title": "Study Area Sq Meters",
+      "type": "number"
+    },
+    "study_area_sq_km": {
+      "description": "Total study area in square kilometers.",
+      "minimum": 0.0,
+      "title": "Study Area Sq Km",
+      "type": "number"
+    },
+    "covered_area_sq_meters": {
+      "description": "Total covered area in square meters.",
+      "minimum": 0.0,
+      "title": "Covered Area Sq Meters",
+      "type": "number"
+    },
+    "covered_area_sq_km": {
+      "description": "Total covered area in square kilometers.",
+      "minimum": 0.0,
+      "title": "Covered Area Sq Km",
+      "type": "number"
+    },
+    "uncovered_area_sq_meters": {
+      "description": "Total uncovered (gap) area in square meters.",
+      "minimum": 0.0,
+      "title": "Uncovered Area Sq Meters",
+      "type": "number"
+    },
+    "uncovered_area_sq_km": {
+      "description": "Total uncovered (gap) area in square kilometers.",
+      "minimum": 0.0,
+      "title": "Uncovered Area Sq Km",
+      "type": "number"
+    },
+    "coverage_fraction": {
+      "description": "Fraction of study area covered [0.0, 1.0].",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Coverage Fraction",
+      "type": "number"
+    },
+    "gap_polygons_count": {
+      "description": "Number of disjoint gap polygons.",
+      "minimum": 0,
+      "title": "Gap Polygons Count",
+      "type": "integer"
+    },
+    "gap_polygons": {
+      "description": "GeoJSON Polygon geometries for uncovered gap areas in [lon, lat] coordinates.",
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Gap Polygons",
+      "type": "array"
+    },
+    "active_cameras_evaluated_count": {
+      "description": "Number of cameras contributing coverage.",
+      "minimum": 0,
+      "title": "Active Cameras Evaluated Count",
+      "type": "integer"
+    },
+    "is_coverage_complete": {
+      "default": true,
+      "description": "Whether coverage inventory was complete.",
+      "title": "Is Coverage Complete",
+      "type": "boolean"
+    },
+    "coverage_inventory_status": {
+      "default": "complete_active",
+      "description": "Inventory status: 'complete_active', 'complete_zero', 'partial', or 'unassessed'.",
+      "title": "Coverage Inventory Status",
+      "type": "string"
+    },
+    "source_classification": {
+      "$ref": "#/$defs/SpatialSourceType",
+      "default": "assumed",
+      "description": "Source classification of coverage (measured, assumed, synthetic)."
+    },
+    "disclaimer": {
+      "default": "Calculated from declared/assumed camera coverage geometry. Represents area outside declared coverage, NOT field-validated wildlife absence or proven lack of animal occurrence.",
+      "description": "Mandatory scientific disclaimer.",
+      "title": "Disclaimer",
+      "type": "string"
+    }
+  },
+  "required": [
+    "data_source_mode",
+    "projection_method",
+    "study_area_sq_meters",
+    "study_area_sq_km",
+    "covered_area_sq_meters",
+    "covered_area_sq_km",
+    "uncovered_area_sq_meters",
+    "uncovered_area_sq_km",
+    "coverage_fraction",
+    "gap_polygons_count",
+    "active_cameras_evaluated_count"
+  ],
+  "title": "BlindSpotResult",
+  "type": "object"
+}

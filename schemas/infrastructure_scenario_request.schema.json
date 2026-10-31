@@ -1,0 +1,234 @@
+{
+  "$defs": {
+    "CameraCoverage": {
+      "additionalProperties": false,
+      "description": "Declared or modeled spatial coverage for a camera trap.",
+      "properties": {
+        "camera_id": {
+          "description": "Camera identifier.",
+          "title": "Camera Id",
+          "type": "string"
+        },
+        "geometry": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GeoJSON-compatible Polygon/MultiPolygon geometry.",
+          "title": "Geometry"
+        },
+        "source_type": {
+          "$ref": "#/$defs/SpatialSourceType",
+          "default": "assumed",
+          "description": "Source classification of coverage (measured, assumed, synthetic)."
+        },
+        "detection_radius_meters": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Effective detection range radius in meters if geometry is circular/buffer.",
+          "title": "Detection Radius Meters"
+        },
+        "azimuth_degrees": {
+          "anyOf": [
+            {
+              "maximum": 360.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Compass bearing angle of camera lens.",
+          "title": "Azimuth Degrees"
+        },
+        "field_of_view_degrees": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 360.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Horizontal sensor angle of view.",
+          "title": "Field Of View Degrees"
+        },
+        "valid_from": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Start of coverage interval.",
+          "title": "Valid From"
+        },
+        "valid_to": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "End of coverage interval.",
+          "title": "Valid To"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Documentation of coverage measurement or assumption.",
+          "title": "Provenance"
+        }
+      },
+      "required": [
+        "camera_id"
+      ],
+      "title": "CameraCoverage",
+      "type": "object"
+    },
+    "SpatialSourceType": {
+      "description": "Source and epistemic classification of spatial geometry.\nExplicitly distinguishes measured field data from model assumptions or scenarios.",
+      "enum": [
+        "measured",
+        "assumed",
+        "hypothetical",
+        "synthetic"
+      ],
+      "title": "SpatialSourceType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Request payload for wildlife-infrastructure scenario analysis (Feature F16).",
+  "properties": {
+    "scenario_id": {
+      "description": "Unique scenario identifier.",
+      "title": "Scenario Id",
+      "type": "string"
+    },
+    "scenario_name": {
+      "description": "Descriptive scenario name.",
+      "title": "Scenario Name",
+      "type": "string"
+    },
+    "study_area_polygon": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Baseline study area polygon.",
+      "title": "Study Area Polygon"
+    },
+    "baseline_camera_coverages": {
+      "description": "Baseline camera coverages.",
+      "items": {
+        "$ref": "#/$defs/CameraCoverage"
+      },
+      "title": "Baseline Camera Coverages",
+      "type": "array"
+    },
+    "crs": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": "EPSG:4326",
+      "description": "Expected Coordinate Reference System.",
+      "title": "Crs"
+    },
+    "default_coverage_radius_meters": {
+      "default": 50.0,
+      "description": "Default camera coverage radius in meters.",
+      "exclusiveMinimum": 0.0,
+      "title": "Default Coverage Radius Meters",
+      "type": "number"
+    },
+    "hypothetical_features": {
+      "description": "Hypothetical features (roads with buffers, proposed cameras, exclusion zones).",
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Hypothetical Features",
+      "type": "array"
+    },
+    "assumptions": {
+      "description": "Explicit documented scenario assumptions.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Assumptions",
+      "type": "array"
+    },
+    "expected_revision": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Expected snapshot dataset revision.",
+      "title": "Expected Revision"
+    },
+    "parameters": {
+      "additionalProperties": true,
+      "description": "Optional additional parameters.",
+      "title": "Parameters",
+      "type": "object"
+    }
+  },
+  "required": [
+    "scenario_id",
+    "scenario_name"
+  ],
+  "title": "InfrastructureScenarioRequest",
+  "type": "object"
+}

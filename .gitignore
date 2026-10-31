@@ -1,7 +1,8 @@
 # ==============================================================================
 # WILDSCOPE AI — Git Ignore Rules (Team-wide)
 # ==============================================================================
-# Combined rules for backend (Santosh), frontend (Laasya), and inference (Harsh).
+# Combined rules for backend (Santosh), frontend (Laasya), inference (Harsh),
+# and analytics (Shravan).
 # Do NOT remove entries without checking with the relevant team member.
 # ==============================================================================
 
@@ -39,10 +40,20 @@ __pycache__/
 # Build artifacts
 # ------------------------------------------------------------------------------
 build/
+develop-eggs/
 dist/
-*.egg-info/
-*.egg
+downloads/
+eggs/
 .eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 site/
 
 # ------------------------------------------------------------------------------
@@ -51,6 +62,7 @@ site/
 *.db
 *.sqlite
 *.sqlite3
+wildscope.db*
 storage/media/
 storage/uploads/
 storage/temp/
@@ -89,6 +101,7 @@ checkpoints/
 # ------------------------------------------------------------------------------
 data/
 datasets/
+caltech_camera_traps*
 *.csv.gz
 *.zip
 *.tar
@@ -133,6 +146,7 @@ temp/
 *.njsproj
 *.sln
 *.sw?
+*.swo
 *~
 
 # ------------------------------------------------------------------------------

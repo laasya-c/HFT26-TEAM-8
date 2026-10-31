@@ -1,0 +1,392 @@
+{
+  "$defs": {
+    "CrossCameraAssociationPair": {
+      "additionalProperties": false,
+      "description": "Typed record for a single correlated encounter pair across different cameras (Feature F06).",
+      "properties": {
+        "association_id": {
+          "description": "Deterministic stable pair identifier, e.g. 'assoc:enc_1::enc_2'.",
+          "title": "Association Id",
+          "type": "string"
+        },
+        "encounter_id_a": {
+          "description": "Identifier of the first encounter in the pair.",
+          "title": "Encounter Id A",
+          "type": "string"
+        },
+        "encounter_id_b": {
+          "description": "Identifier of the second encounter in the pair.",
+          "title": "Encounter Id B",
+          "type": "string"
+        },
+        "camera_id_a": {
+          "description": "Physical camera ID for encounter A.",
+          "title": "Camera Id A",
+          "type": "string"
+        },
+        "camera_id_b": {
+          "description": "Physical camera ID for encounter B.",
+          "title": "Camera Id B",
+          "type": "string"
+        },
+        "shared_taxa": {
+          "description": "Eligible species present in both encounters.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Shared Taxa",
+          "type": "array"
+        },
+        "observation_ids_a": {
+          "description": "Source observation IDs for encounter A.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Observation Ids A",
+          "type": "array"
+        },
+        "observation_ids_b": {
+          "description": "Source observation IDs for encounter B.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Observation Ids B",
+          "type": "array"
+        },
+        "detection_ids_a": {
+          "description": "Source detection IDs for encounter A.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Detection Ids A",
+          "type": "array"
+        },
+        "detection_ids_b": {
+          "description": "Source detection IDs for encounter B.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Detection Ids B",
+          "type": "array"
+        },
+        "effective_labels_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Effective label resolution and provenance per detection ID.",
+          "title": "Effective Labels Provenance",
+          "type": "object"
+        },
+        "start_time_a": {
+          "description": "ISO 8601 start timestamp for encounter A.",
+          "title": "Start Time A",
+          "type": "string"
+        },
+        "end_time_a": {
+          "description": "ISO 8601 end timestamp for encounter A.",
+          "title": "End Time A",
+          "type": "string"
+        },
+        "start_time_b": {
+          "description": "ISO 8601 start timestamp for encounter B.",
+          "title": "Start Time B",
+          "type": "string"
+        },
+        "end_time_b": {
+          "description": "ISO 8601 end timestamp for encounter B.",
+          "title": "End Time B",
+          "type": "string"
+        },
+        "nominal_gap_seconds": {
+          "description": "Nominal temporal gap in seconds between encounter intervals: max(0, start_B - end_A, start_A - end_B).",
+          "title": "Nominal Gap Seconds",
+          "type": "number"
+        },
+        "min_possible_gap_seconds": {
+          "description": "Exact attainable lower bound on temporal separation in seconds accounting for combined pairwise clock uncertainty: max(0, nominal_gap - uncertainty).",
+          "title": "Min Possible Gap Seconds",
+          "type": "number"
+        },
+        "max_possible_gap_seconds": {
+          "description": "Exact attainable upper bound on temporal separation in seconds accounting for combined pairwise clock uncertainty: max(0, (start_B - end_A) + U, (start_A - end_B) + U). Note: for overlapping intervals, G + U is an enclosure, while this field calculates the exact attainable supremum.",
+          "title": "Max Possible Gap Seconds",
+          "type": "number"
+        },
+        "effective_gap_seconds": {
+          "description": "Backward-compatible alias for min_possible_gap_seconds. Lower bound of possible gap range, NOT a definitive corrected gap.",
+          "title": "Effective Gap Seconds",
+          "type": "number"
+        },
+        "temporal_eligibility": {
+          "description": "Eligibility classification: 'definitely_within_threshold' if max_possible_gap <= threshold else 'possibly_within_threshold'.",
+          "title": "Temporal Eligibility",
+          "type": "string"
+        },
+        "clock_offset_seconds_a": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Applied clock offset in seconds for camera A (t_corrected = t_raw + offset).",
+          "title": "Clock Offset Seconds A"
+        },
+        "clock_offset_seconds_b": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Applied clock offset in seconds for camera B (t_corrected = t_raw + offset).",
+          "title": "Clock Offset Seconds B"
+        },
+        "temporal_relation": {
+          "description": "'overlapping' or 'disjoint'.",
+          "title": "Temporal Relation",
+          "type": "string"
+        },
+        "observed_interval_order": {
+          "description": "'overlapping', 'A_before_B', or 'B_before_A'.",
+          "title": "Observed Interval Order",
+          "type": "string"
+        },
+        "spatial_check_status": {
+          "description": "'not_evaluated', 'unavailable', 'passed', 'failed', or 'measured'.",
+          "title": "Spatial Check Status",
+          "type": "string"
+        },
+        "camera_distance_meters": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Approximate spherical great-circle camera separation in meters if coordinates exist and are evaluated. Camera separation is not animal travel distance.",
+          "title": "Camera Distance Meters"
+        },
+        "spatial_units": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "'meters' if camera distance was calculated, otherwise None.",
+          "title": "Spatial Units"
+        },
+        "rule_outcomes": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "description": "Evaluated boolean outcomes for individual association rules.",
+          "title": "Rule Outcomes",
+          "type": "object"
+        },
+        "disclaimer": {
+          "default": "Possible association only; individual animal identity and movement are not established.",
+          "description": "Mandatory scientific disclaimer.",
+          "title": "Disclaimer",
+          "type": "string"
+        },
+        "spatial_note": {
+          "description": "Explicit note detailing spatial evaluation status and limitations.",
+          "title": "Spatial Note",
+          "type": "string"
+        },
+        "explanation": {
+          "description": "Deterministic plain-language explanation of the association.",
+          "title": "Explanation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "association_id",
+        "encounter_id_a",
+        "encounter_id_b",
+        "camera_id_a",
+        "camera_id_b",
+        "shared_taxa",
+        "start_time_a",
+        "end_time_a",
+        "start_time_b",
+        "end_time_b",
+        "nominal_gap_seconds",
+        "min_possible_gap_seconds",
+        "max_possible_gap_seconds",
+        "effective_gap_seconds",
+        "temporal_eligibility",
+        "temporal_relation",
+        "observed_interval_order",
+        "spatial_check_status",
+        "rule_outcomes",
+        "spatial_note",
+        "explanation"
+      ],
+      "title": "CrossCameraAssociationPair",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Complete typed payload for cross-camera observation correlation (Feature F06).",
+  "properties": {
+    "data_source_mode": {
+      "description": "Snapshot data source mode.",
+      "title": "Data Source Mode",
+      "type": "string"
+    },
+    "rule_version": {
+      "default": "cross_camera_association_v1",
+      "description": "Association rule engine version.",
+      "title": "Rule Version",
+      "type": "string"
+    },
+    "clock_comparability_policy": {
+      "description": "Policy used for inter-camera clock comparisons.",
+      "title": "Clock Comparability Policy",
+      "type": "string"
+    },
+    "clock_uncertainty_seconds": {
+      "default": 0.0,
+      "description": "Clock uncertainty propagated in seconds.",
+      "title": "Clock Uncertainty Seconds",
+      "type": "number"
+    },
+    "clock_offsets_applied": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Per-camera clock offsets applied in seconds (t_corrected = t_raw + offset).",
+      "title": "Clock Offsets Applied"
+    },
+    "timestamps_pre_corrected": {
+      "default": false,
+      "description": "Whether timestamps were pre-corrected prior to analysis.",
+      "title": "Timestamps Pre Corrected",
+      "type": "boolean"
+    },
+    "correction_provenance": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Documented provenance for pre-corrected timestamps or offset source.",
+      "title": "Correction Provenance"
+    },
+    "spatial_mode": {
+      "description": "Spatial mode used during evaluation.",
+      "title": "Spatial Mode",
+      "type": "string"
+    },
+    "temporal_threshold_seconds": {
+      "description": "Maximum allowable temporal gap in seconds.",
+      "title": "Temporal Threshold Seconds",
+      "type": "number"
+    },
+    "spatial_threshold_meters": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Maximum allowable camera distance in meters if set.",
+      "title": "Spatial Threshold Meters"
+    },
+    "total_eligible_encounters": {
+      "description": "Total encounters meeting scope and species criteria.",
+      "title": "Total Eligible Encounters",
+      "type": "integer"
+    },
+    "total_candidate_pairs_evaluated": {
+      "description": "Total candidate pairs evaluated.",
+      "title": "Total Candidate Pairs Evaluated",
+      "type": "integer"
+    },
+    "total_matching_pairs_found": {
+      "description": "Total matching pairs satisfying all rules.",
+      "title": "Total Matching Pairs Found",
+      "type": "integer"
+    },
+    "returned_pairs_count": {
+      "description": "Count of association pairs returned.",
+      "title": "Returned Pairs Count",
+      "type": "integer"
+    },
+    "is_coverage_complete": {
+      "default": true,
+      "description": "Whether pair evaluation was exhaustive or bounded.",
+      "title": "Is Coverage Complete",
+      "type": "boolean"
+    },
+    "evaluation_policy": {
+      "default": "all_eligible",
+      "description": "Candidate pair evaluation policy.",
+      "title": "Evaluation Policy",
+      "type": "string"
+    },
+    "associations": {
+      "description": "Correlated encounter pairs.",
+      "items": {
+        "$ref": "#/$defs/CrossCameraAssociationPair"
+      },
+      "title": "Associations",
+      "type": "array"
+    },
+    "disclaimer": {
+      "default": "Possible association only; individual animal identity and movement are not established. Same-species sightings close in time can be coincidental.",
+      "description": "Mandatory scientific limitation.",
+      "title": "Disclaimer",
+      "type": "string"
+    },
+    "spatial_disclaimer": {
+      "default": "Camera separation is not animal travel distance; biological movement feasibility is not validated.",
+      "description": "Spatial measurement limitation.",
+      "title": "Spatial Disclaimer",
+      "type": "string"
+    }
+  },
+  "required": [
+    "data_source_mode",
+    "clock_comparability_policy",
+    "spatial_mode",
+    "temporal_threshold_seconds",
+    "total_eligible_encounters",
+    "total_candidate_pairs_evaluated",
+    "total_matching_pairs_found",
+    "returned_pairs_count"
+  ],
+  "title": "CrossCameraAssociationsResult",
+  "type": "object"
+}
