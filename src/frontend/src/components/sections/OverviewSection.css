@@ -1,0 +1,255 @@
+.ws-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Welcome Card */
+.ws-welcome-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f7f9f5 100%);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 24px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  box-shadow: var(--shadow-card);
+}
+
+.ws-welcome-content {
+  max-width: 650px;
+}
+
+.ws-welcome-pill {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+  background-color: rgba(36, 92, 69, 0.1);
+  padding: 3px 9px;
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+
+.ws-welcome-title {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1.25;
+  margin-bottom: 8px;
+}
+
+.ws-welcome-text {
+  font-size: 0.9rem;
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+
+.ws-welcome-status {
+  flex-shrink: 0;
+}
+
+.ws-status-callout {
+  background-color: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 200px;
+}
+
+.ws-callout-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+  font-weight: 600;
+}
+
+.ws-callout-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.ws-callout-value.is-disconnected {
+  color: var(--color-status-offline);
+}
+
+.ws-callout-value.is-connected {
+  color: var(--color-status-online);
+}
+
+.ws-callout-note {
+  font-size: 0.72rem;
+  color: var(--color-muted);
+}
+
+.ws-callout-note code {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* Blocks */
+.ws-section-block {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ws-block-header {
+  display: flex;
+  flex-direction: column;
+}
+
+.ws-block-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.ws-block-subtitle {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  margin-top: 2px;
+}
+
+/* Metrics Grid */
+.ws-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 16px;
+}
+
+.ws-metric-card {
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-subtle);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ws-metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card);
+}
+
+.ws-metric-category {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-bottom: 8px;
+}
+
+.ws-metric-figure {
+  font-size: 2.2rem;
+  font-weight: 700;
+  color: var(--color-muted);
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.ws-metric-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 8px;
+}
+
+.ws-metric-target {
+  font-size: 0.72rem;
+  color: var(--color-muted);
+  border-top: 1px dashed var(--color-border);
+  padding-top: 8px;
+  margin-top: auto;
+}
+
+.ws-metric-target code {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* Modules Grid */
+.ws-modules-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.ws-module-card {
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-subtle);
+}
+
+.ws-module-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.ws-module-name {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.ws-module-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.ws-module-badge.current {
+  background-color: rgba(36, 92, 69, 0.12);
+  color: var(--color-primary);
+}
+
+.ws-module-desc {
+  font-size: 0.82rem;
+  color: var(--color-muted);
+  line-height: 1.45;
+  margin-bottom: 16px;
+  flex: 1;
+}
+
+.ws-module-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--color-border);
+  padding-top: 12px;
+  font-size: 0.75rem;
+}
+
+.ws-module-route code {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.ws-module-link {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  transition: color 0.15s ease;
+}
+
+.ws-module-link:hover {
+  color: var(--color-accent);
+}

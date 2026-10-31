@@ -1,0 +1,72 @@
+/**
+ * WILDSCOPE Global Stylesheet
+ * Custom CSS Palette & Reset
+ */
+
+:root {
+  /* Team Specified Design Palette */
+  --color-bg: #f4f6f2;
+  --color-sidebar: #173c32;
+  --color-primary: #245c45;
+  --color-accent: #e5ad52;
+  --color-text: #1f3029;
+  --color-muted: #64746a;
+  --color-border: #dce4da;
+
+  /* Additional Interface Neutrals */
+  --color-card-bg: #ffffff;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.08);
+  --color-sidebar-active: #245c45;
+  --color-sidebar-text: #e1ede6;
+  --color-sidebar-text-muted: #95ada1;
+  --color-sidebar-border: rgba(255, 255, 255, 0.12);
+
+  /* Status Colors */
+  --color-status-offline: #a33a3a;
+  --color-status-offline-bg: #fde8e8;
+  --color-status-online: #2d8a4e;
+  --color-status-online-bg: #e6f7ec;
+
+  /* Typography & Layout Spacing */
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-subtle: 0 1px 3px rgba(31, 48, 41, 0.06);
+  --shadow-card: 0 4px 12px rgba(31, 48, 41, 0.05);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+}
+
+button {
+  font-family: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}

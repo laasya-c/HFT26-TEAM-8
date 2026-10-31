@@ -1,0 +1,101 @@
+.ws-review-detail-card {
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  box-shadow: var(--shadow-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ws-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ws-section-heading {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 6px;
+}
+
+.ws-attr-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.ws-attr-label {
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+.ws-attr-id {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  background-color: rgba(36, 92, 69, 0.08);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.ws-attr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.ws-attr-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.82rem;
+}
+
+.ws-attr-item dt {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ws-attr-item dd {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.ws-attr-item.full-width {
+  grid-column: 1 / -1;
+}
+
+.ws-pending-tag {
+  color: var(--color-muted);
+  font-style: italic;
+  font-size: 0.75rem;
+}
+
+.ws-status-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  background-color: rgba(36, 92, 69, 0.1);
+  padding: 2px 7px;
+  border-radius: 10px;
+  text-transform: capitalize;
+}
+
+.ws-notes-body {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-text);
+  line-height: 1.45;
+}

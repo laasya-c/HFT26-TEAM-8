@@ -1,12 +1,17 @@
-# WILDSCOPE — Runtime dependencies (portable)
-# ============================================
-# Direct dependencies required to RUN the WILDSCOPE inference component.
-# Does NOT include development or testing tools — see requirements-dev.txt.
-# Does NOT include CUDA-specific build tags — see requirements-lock-cuda.txt.
+# ==============================================================================
+# WILDSCOPE — Combined Runtime Dependencies
+# ==============================================================================
+# This file contains dependencies for ALL modules (backend + inference).
+# Each section is owned by its respective team member.
 #
-# =============================================================================
+# Runtime Note:
+# - Backend testing environment: Python 3.14.3 (Windows)
+# - Inference pipeline: Python 3.11 (RTX 4050 CUDA compatible)
+# - Official Team ByteStrom baseline: Python 3.11
+#
+# ==============================================================================
 # IMPORTANT: PyTorch must be installed BEFORE speciesnet.
-# =============================================================================
+# ==============================================================================
 #
 # The PyTorch packages (torch, torchvision) are NOT available from the default
 # PyPI index with CUDA support.  Install them manually first:
@@ -26,12 +31,54 @@
 # For development and testing, also install:
 #   pip install -r requirements-dev.txt
 #
-# For exact environment reproduction on matching CUDA hardware:
+# For exact inference environment reproduction on matching CUDA hardware:
 #   pip install torch==2.11.0+cu128 torchvision==0.26.0+cu128 \
 #       --index-url https://download.pytorch.org/whl/cu128
 #   pip install -r requirements-lock-cuda.txt
 #
-# =============================================================================
+# ==============================================================================
+
+
+# ==============================================================================
+# BACKEND DEPENDENCIES (Santosh)
+# ==============================================================================
+# Packages marked [VERIFIED-3.14] are pre-installed and confirmed functioning.
+# Packages marked [PURE-PYTHON / PENDING-PIP] run purely in Python bytecode.
+# ==============================================================================
+
+# Core Web Framework & ASGI Server [VERIFIED-3.14]
+fastapi==0.162.0
+uvicorn==0.54.0
+starlette==1.10.0
+
+# Data Validation & Serialization [VERIFIED-3.14]
+pydantic==2.14.2
+pydantic-core==2.50.2
+pydantic-settings>=2.2.0
+
+# Database ORM & Migrations [PENDING-PIP]
+# Pure Python / Standard Library SQLite engine; fully compatible with PostgreSQL
+sqlalchemy>=2.0.30
+alembic>=1.13.0
+
+# HTTP Client & Form Processing [PENDING-PIP]
+httpx>=0.27.0
+python-multipart>=0.0.9
+
+# Testing Suite [PENDING-PIP]
+pytest>=8.0.0
+anyio>=4.0.0
+
+# Authentication & Cryptography [PENDING-PIP]
+argon2-cffi>=23.1.0
+pyjwt>=2.8.0
+
+
+# ==============================================================================
+# INFERENCE DEPENDENCIES (Harsh)
+# ==============================================================================
+# CUDA-specific build tags are in requirements-lock-cuda.txt (not here).
+# ==============================================================================
 
 # SpeciesNet: Google animal classifier + MegaDetector V5 detector.
 # Pulls in yolov5, scipy, kagglehub, huggingface_hub, etc. transitively.
@@ -48,3 +95,12 @@ numpy>=1.24
 # Image loading and manipulation — used by SpeciesNetAnimalDetector and
 # the visualization scripts in tests/inference/.
 pillow>=10.0
+
+
+# ==============================================================================
+# TEAM RUNTIME WARNING:
+# The backend modules (FastAPI, SQLAlchemy) are verified on Python 3.14.
+# The inference pipeline (PyTorch + CUDA 12) requires Python 3.11.
+# Shravan's geospatial modules also require Python 3.11.
+# When running the full stack, use Python 3.11 as the common baseline.
+# ==============================================================================
