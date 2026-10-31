@@ -1,0 +1,71 @@
+{
+  "metadata": {
+    "schema_version": "1.0.0",
+    "dataset_revision": 0,
+    "created_at": "2026-10-30T12:00:00Z",
+    "source_system": "WILDSCOPE_BACKEND",
+    "provenance": {
+      "fixture_type": "SYNTHETIC TEST FIXTURE",
+      "synthetic_data_disclaimer": "SYNTHETIC TEST FIXTURE ONLY - MINIMAL VALID TEST PAYLOAD"
+    },
+    "has_spatial_context": false,
+    "has_monitoring_effort": false
+  },
+  "cameras": [
+    {
+      "id": "cam_min_01",
+      "site_id": null,
+      "latitude": null,
+      "longitude": null,
+      "timezone": null,
+      "provenance": "SYNTHETIC TEST FIXTURE"
+    }
+  ],
+  "media_assets": [],
+  "observations": [
+    {
+      "id": "obs_min_001",
+      "camera_id": "cam_min_01",
+      "source_media_id": "med_untracked",
+      "frame_offset_ms": null,
+      "captured_at": null,
+      "raw_timestamp": null,
+      "timezone_source": null,
+      "width_px": null,
+      "height_px": null,
+      "detection_ids": ["det_min_001"]
+    }
+  ],
+  "prediction_runs": [],
+  "detections": [
+    {
+      "id": "det_min_001",
+      "observation_id": "obs_min_001",
+      "run_id": null,
+      "triage_state": "animal_detected",
+      "animal_detection_confidence": 0.82,
+      "predicted_taxon_id": "canis_aureus",
+      "raw_label": "jackal",
+      "classification_confidence": 0.79,
+      "score_type": "softmax",
+      "calibration_status": "uncalibrated",
+      "bbox": null,
+      "alternatives": []
+    }
+  ],
+  "encounters": [
+    {
+      "id": "enc_min_001",
+      "camera_id": "cam_min_01",
+      "member_observation_ids": ["obs_min_001"],
+      "member_detection_ids": ["det_min_001"],
+      "start_time": null,
+      "end_time": null,
+      "rule_version": "v1_sequence",
+      "provenance": "SYNTHETIC TEST FIXTURE"
+    }
+  ],
+  "reviews": [],
+  "monitoring_efforts": [],
+  "spatial_context": null
+}

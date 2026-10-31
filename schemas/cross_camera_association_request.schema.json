@@ -1,0 +1,270 @@
+{
+  "$defs": {
+    "AnalysisMetric": {
+      "description": "Operations supported by the decision intelligence module.\nRejects arbitrary or unsupported queries.\n\nPhase 2 additions:\n- OVERVIEW: snapshot-level summary (encounters, images, cameras, time coverage).\n- SPECIES_ENCOUNTER_COUNTS: deduplicated encounter/species contributions.\n- CAMERA_COMPARISON: per-camera/site encounter and species counts.\n- DAILY_ACTIVITY: encounter counts grouped by calendar date.\n- HOURLY_ACTIVITY: encounter counts grouped by hour-of-day (0-23).\n- SPECIES_CAMERA_MATRIX: species \u00d7 camera count matrix.\n- EFFORT_NORMALISED_RATES: encounters per active camera-day.",
+      "enum": [
+        "overview",
+        "species_encounter_counts",
+        "reference_image_species_counts",
+        "camera_comparison",
+        "daily_activity",
+        "hourly_activity",
+        "species_camera_matrix",
+        "effort_normalised_rates",
+        "cross_camera_associations",
+        "activity_anomaly",
+        "activity_anomalies",
+        "monitoring_blind_spots",
+        "candidate_placement",
+        "candidate_camera_placement",
+        "proximity_indicators",
+        "geofencing_proximity",
+        "infrastructure_scenario",
+        "wildlife_infrastructure_scenarios",
+        "activity_time_distribution",
+        "cross_camera_association",
+        "camera_activity_summary",
+        "monitoring_coverage_summary"
+      ],
+      "title": "AnalysisMetric",
+      "type": "string"
+    },
+    "ClockComparabilityPolicy": {
+      "description": "Policy declaring the operational basis for comparing timestamps across different cameras.\n- DOCUMENTED_SYNC: clocks verified synchronized across deployment (e.g. NTP, GPS, manual sync).\n- ANALYST_ASSUMPTION: explicit analyst policy assuming clocks are synchronized within stated bounds.\n- OFFSETS_KNOWN: clock offsets and uncertainty are known and propagated conservatively.\n- UNKNOWN: inter-camera clock alignment is unverified (returns INSUFFICIENT_DATA).",
+      "enum": [
+        "documented_sync",
+        "analyst_assumption",
+        "offsets_known",
+        "unknown"
+      ],
+      "title": "ClockComparabilityPolicy",
+      "type": "string"
+    },
+    "InclusionPolicy": {
+      "description": "Policy governing which detections are admitted into analytical aggregations.",
+      "enum": [
+        "reviewed_only",
+        "provisional_and_reviewed",
+        "all_detections"
+      ],
+      "title": "InclusionPolicy",
+      "type": "string"
+    },
+    "SpatialMode": {
+      "description": "Spatial evaluation mode for cross-camera observation correlation (Phase 4, Feature F06).\n- TIME_SPECIES_ONLY: GPS coordinates optional; spatial checks not evaluated.\n- SPATIAL_WHEN_AVAILABLE: evaluates distance when coordinates exist; marks missing as unavailable.\n- SPATIAL_REQUIRED: evaluates only pairs with genuine coordinates; returns UNAVAILABLE if missing.",
+      "enum": [
+        "time_species_only",
+        "spatial_when_available",
+        "spatial_required"
+      ],
+      "title": "SpatialMode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Phase 4 Request payload for cross-camera observation correlation (Feature F06).\nFinds pairs of encounters from different cameras that satisfy explicit species,\ntemporal, and optional spatial rules.\n\nCRITICAL INTERPRETATION:\nA match means: 'Possible association between recorded sightings under the configured rules.'\nIt does NOT establish the same individual animal, confirmed movement, migration corridor,\ntravel speed, or probability of identity.",
+  "properties": {
+    "metric": {
+      "$ref": "#/$defs/AnalysisMetric",
+      "default": "cross_camera_associations",
+      "description": "Selected operational metric: CROSS_CAMERA_ASSOCIATIONS."
+    },
+    "species_ids": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional focal species/taxa IDs to match. None evaluates all eligible species.",
+      "title": "Species Ids"
+    },
+    "camera_ids": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional set of camera IDs to include in the evaluation.",
+      "title": "Camera Ids"
+    },
+    "site_ids": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional set of site IDs to include.",
+      "title": "Site Ids"
+    },
+    "start_time": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Start of analysis time window (must be timezone-aware).",
+      "title": "Start Time"
+    },
+    "end_time": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "End of analysis time window (must be timezone-aware).",
+      "title": "End Time"
+    },
+    "analysis_timezone": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "IANA timezone identifier for reporting and interval localization.",
+      "title": "Analysis Timezone"
+    },
+    "max_temporal_separation_seconds": {
+      "default": 3600.0,
+      "description": "Maximum allowable temporal separation in seconds between encounter intervals (default: 3600.0s = 1.0h). Encounters with gap <= max_temporal_separation_seconds satisfy the temporal rule. Notice: this is an unvalidated configurable heuristic, not a proven biological or travel threshold.",
+      "minimum": 0.0,
+      "title": "Max Temporal Separation Seconds",
+      "type": "number"
+    },
+    "clock_comparability_policy": {
+      "$ref": "#/$defs/ClockComparabilityPolicy",
+      "default": "analyst_assumption",
+      "description": "Policy declaring the basis for comparing timestamps across different physical cameras. Options: documented_sync, analyst_assumption, offsets_known, unknown. When 'unknown', time-based association returns INSUFFICIENT_DATA because inter-camera clock alignment is unverified. When 'offsets_known', requires either valid per-camera clock_offsets dict (seconds, t_corrected = t_raw + offset) or timestamps_pre_corrected=True with correction_provenance. Uncertainty bounds alone do not satisfy offsets_known."
+    },
+    "clock_uncertainty_seconds": {
+      "default": 0.0,
+      "description": "Combined pairwise clock-offset uncertainty bound U_pair >= 0 in seconds between cameras (default: 0.0s). If individual cameras have per-camera clock uncertainties u_A and u_B, then U_pair = u_A + u_B. For nominal gap G, true separation lies within the possible gap range [max(0, G - U_pair), G + U_pair]. Threshold eligibility means 'possibly within window' (min_possible_gap <= max_temporal_separation_seconds).",
+      "minimum": 0.0,
+      "title": "Clock Uncertainty Seconds",
+      "type": "number"
+    },
+    "spatial_mode": {
+      "$ref": "#/$defs/SpatialMode",
+      "default": "time_species_only",
+      "description": "Spatial rule evaluation mode: 1) time_species_only: do not require coordinates, spatial_check_status='not_evaluated'. 2) spatial_when_available: apply distance checks when coordinates exist; mark others 'unavailable'. 3) spatial_required: evaluate only pairs with valid coordinates; if none exist, returns UNAVAILABLE."
+    },
+    "max_spatial_distance_meters": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional maximum distance threshold in meters between camera traps. When configured, pairs with geodesic distance > threshold are excluded.",
+      "title": "Max Spatial Distance Meters"
+    },
+    "inclusion_policy": {
+      "$ref": "#/$defs/InclusionPolicy",
+      "default": "provisional_and_reviewed",
+      "description": "Policy governing which detections within encounters are admitted."
+    },
+    "min_confidence": {
+      "default": 0.0,
+      "description": "Minimum detection/classification confidence cutoff.",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Min Confidence",
+      "type": "number"
+    },
+    "result_limit": {
+      "anyOf": [
+        {
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": 50,
+      "description": "Maximum number of top-ranked associations to return (default: 50). Does NOT mark response partial.",
+      "title": "Result Limit"
+    },
+    "evaluation_limit": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional upper bound on candidate pairs evaluated during simulation. When applied, bounds evaluation work, marks coverage incomplete, and sets status to PARTIAL.",
+      "title": "Evaluation Limit"
+    },
+    "evaluation_policy": {
+      "default": "all_eligible",
+      "description": "Policy governing pair candidate selection when evaluation_limit is set.",
+      "title": "Evaluation Policy",
+      "type": "string"
+    },
+    "expected_revision": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Expected dataset revision for optimistic concurrency.",
+      "title": "Expected Revision"
+    },
+    "parameters": {
+      "additionalProperties": true,
+      "description": "Optional additional parameters.",
+      "title": "Parameters",
+      "type": "object"
+    }
+  },
+  "title": "CrossCameraAssociationRequest",
+  "type": "object"
+}

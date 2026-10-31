@@ -1,0 +1,380 @@
+{
+  "$defs": {
+    "CameraCoverage": {
+      "additionalProperties": false,
+      "description": "Declared or modeled spatial coverage for a camera trap.",
+      "properties": {
+        "camera_id": {
+          "description": "Camera identifier.",
+          "title": "Camera Id",
+          "type": "string"
+        },
+        "geometry": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GeoJSON-compatible Polygon/MultiPolygon geometry.",
+          "title": "Geometry"
+        },
+        "source_type": {
+          "$ref": "#/$defs/SpatialSourceType",
+          "default": "assumed",
+          "description": "Source classification of coverage (measured, assumed, synthetic)."
+        },
+        "detection_radius_meters": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Effective detection range radius in meters if geometry is circular/buffer.",
+          "title": "Detection Radius Meters"
+        },
+        "azimuth_degrees": {
+          "anyOf": [
+            {
+              "maximum": 360.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Compass bearing angle of camera lens.",
+          "title": "Azimuth Degrees"
+        },
+        "field_of_view_degrees": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 360.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Horizontal sensor angle of view.",
+          "title": "Field Of View Degrees"
+        },
+        "valid_from": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Start of coverage interval.",
+          "title": "Valid From"
+        },
+        "valid_to": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "End of coverage interval.",
+          "title": "Valid To"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Documentation of coverage measurement or assumption.",
+          "title": "Provenance"
+        }
+      },
+      "required": [
+        "camera_id"
+      ],
+      "title": "CameraCoverage",
+      "type": "object"
+    },
+    "CandidateSite": {
+      "additionalProperties": false,
+      "description": "Candidate camera placement site for monitoring optimization.",
+      "properties": {
+        "candidate_id": {
+          "description": "Unique candidate site ID.",
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Descriptive site label.",
+          "title": "Name"
+        },
+        "latitude": {
+          "anyOf": [
+            {
+              "maximum": 90.0,
+              "minimum": -90.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latitude"
+        },
+        "longitude": {
+          "anyOf": [
+            {
+              "maximum": 180.0,
+              "minimum": -180.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Longitude"
+        },
+        "geometry": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GeoJSON Polygon/MultiPolygon representing modeled viewshed.",
+          "title": "Geometry"
+        },
+        "coverage_radius_meters": {
+          "default": 50.0,
+          "description": "Radius in meters if geometry is modeled as circular buffer.",
+          "exclusiveMinimum": 0.0,
+          "title": "Coverage Radius Meters",
+          "type": "number"
+        },
+        "cost": {
+          "default": 1.0,
+          "description": "Deployment or maintenance cost weight (must be finite positive number).",
+          "exclusiveMinimum": 0.0,
+          "title": "Cost",
+          "type": "number"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "description": "Additional site features (e.g. accessibility, tree cover).",
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "candidate_id"
+      ],
+      "title": "CandidateSite",
+      "type": "object"
+    },
+    "SpatialSourceType": {
+      "description": "Source and epistemic classification of spatial geometry.\nExplicitly distinguishes measured field data from model assumptions or scenarios.",
+      "enum": [
+        "measured",
+        "assumed",
+        "hypothetical",
+        "synthetic"
+      ],
+      "title": "SpatialSourceType",
+      "type": "string"
+    },
+    "SpatialZone": {
+      "additionalProperties": false,
+      "description": "Supplied spatial zone boundary (e.g. park core, corridor, buffer zone).",
+      "properties": {
+        "id": {
+          "description": "Stable zone identifier.",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human-readable zone label.",
+          "title": "Name",
+          "type": "string"
+        },
+        "zone_type": {
+          "description": "e.g. 'core_reserve', 'community_buffer', 'road_corridor'.",
+          "title": "Zone Type",
+          "type": "string"
+        },
+        "geometry": {
+          "additionalProperties": true,
+          "description": "GeoJSON-compatible geometry dictionary (Polygon, MultiPolygon, etc.).",
+          "title": "Geometry",
+          "type": "object"
+        },
+        "valid_from": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Start of temporal applicability.",
+          "title": "Valid From"
+        },
+        "valid_to": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "End of temporal applicability.",
+          "title": "Valid To"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "zone_type",
+        "geometry"
+      ],
+      "title": "SpatialZone",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Request payload for candidate camera placement ranking (Feature F09).",
+  "properties": {
+    "study_area_polygon": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "GeoJSON Polygon/MultiPolygon defining study area boundary.",
+      "title": "Study Area Polygon"
+    },
+    "candidate_sites": {
+      "description": "Candidate placement sites to evaluate.",
+      "items": {
+        "$ref": "#/$defs/CandidateSite"
+      },
+      "title": "Candidate Sites",
+      "type": "array"
+    },
+    "exclusion_zones": {
+      "description": "Exclusion zones where placement or coverage is forbidden.",
+      "items": {
+        "$ref": "#/$defs/SpatialZone"
+      },
+      "title": "Exclusion Zones",
+      "type": "array"
+    },
+    "existing_camera_coverages": {
+      "description": "Baseline camera coverages already deployed. If empty, uses snapshot.",
+      "items": {
+        "$ref": "#/$defs/CameraCoverage"
+      },
+      "title": "Existing Camera Coverages",
+      "type": "array"
+    },
+    "crs": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": "EPSG:4326",
+      "description": "Expected Coordinate Reference System.",
+      "title": "Crs"
+    },
+    "default_coverage_radius_meters": {
+      "default": 50.0,
+      "description": "Default circular coverage radius in meters.",
+      "exclusiveMinimum": 0.0,
+      "title": "Default Coverage Radius Meters",
+      "type": "number"
+    },
+    "cost_weight": {
+      "default": 1.0,
+      "description": "Weight of cost in score calculation (score = marginal_gain / (cost^cost_weight)).",
+      "minimum": 0.0,
+      "title": "Cost Weight",
+      "type": "number"
+    },
+    "expected_revision": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Expected snapshot dataset revision.",
+      "title": "Expected Revision"
+    },
+    "parameters": {
+      "additionalProperties": true,
+      "description": "Optional additional parameters.",
+      "title": "Parameters",
+      "type": "object"
+    }
+  },
+  "title": "CandidatePlacementRequest",
+  "type": "object"
+}

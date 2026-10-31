@@ -1,0 +1,143 @@
+{
+  "additionalProperties": false,
+  "description": "Official dataset annotation (e.g. from Caltech Camera Traps ground truth).\n\nPhase 2 discriminated type for dataset_reference mode.\nThis entity MUST NOT be mixed with operational_prediction Detection records.\nIt preserves:\n- Original source annotation ID and image ID.\n- Original category ID and category name exactly as published.\n- Namespace-prefixed internal identifiers to avoid collisions with operational IDs.\n- Bounding box in dataset-native COCO pixel format (xmin, ymin, width, height).\n\nKey distinctions from Detection:\n- No prediction run, model name, or confidence score (none are available).\n- No triage state (dataset annotations assert presence, not probability).\n- No invented review events.",
+  "properties": {
+    "id": {
+      "description": "Namespaced internal identifier, e.g. 'cct:ann:12345'. Original source annotation ID is preserved in source_annotation_id.",
+      "title": "Id",
+      "type": "string"
+    },
+    "observation_id": {
+      "description": "Reference to the Observation record for the annotated image.",
+      "title": "Observation Id",
+      "type": "string"
+    },
+    "source_annotation_id": {
+      "description": "Original annotation ID as published by the dataset.",
+      "title": "Source Annotation Id",
+      "type": "string"
+    },
+    "source_image_id": {
+      "description": "Original image ID from the dataset (before namespacing).",
+      "title": "Source Image Id",
+      "type": "string"
+    },
+    "dataset_name": {
+      "description": "Dataset name, e.g. 'caltech_camera_traps'.",
+      "title": "Dataset Name",
+      "type": "string"
+    },
+    "dataset_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Dataset version or release identifier if available.",
+      "title": "Dataset Version"
+    },
+    "category_id": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        }
+      ],
+      "description": "Original category ID exactly as published. Integer for CCT (COCO Camera Traps format).",
+      "title": "Category Id"
+    },
+    "category_name": {
+      "description": "Original category name exactly as published (e.g. 'coyote', 'empty', 'person').",
+      "title": "Category Name",
+      "type": "string"
+    },
+    "wildscope_taxon_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Mapped WILDSCOPE taxon identifier, if a canonical mapping exists. None if category is non-animal, empty, unknown, or unsupported. Mapping is documented in the dataset adapter.",
+      "title": "Wildscope Taxon Id"
+    },
+    "is_animal": {
+      "description": "True if category represents an animal species or group. False for 'empty', 'vehicle', 'person', and non-animal categories.",
+      "title": "Is Animal",
+      "type": "boolean"
+    },
+    "is_empty": {
+      "default": false,
+      "description": "True if category_name == 'empty' (no animal trigger).",
+      "title": "Is Empty",
+      "type": "boolean"
+    },
+    "bbox_coco": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Bounding box in COCO pixel format [xmin, ymin, width, height]. Preserved exactly from the source dataset. Not normalized.",
+      "title": "Bbox Coco"
+    },
+    "sequence_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Dataset burst sequence ID (seq_id in CCT format).",
+      "title": "Sequence Id"
+    },
+    "provenance": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Source dataset provenance (URL, license, import timestamp).",
+      "title": "Provenance"
+    }
+  },
+  "required": [
+    "id",
+    "observation_id",
+    "source_annotation_id",
+    "source_image_id",
+    "dataset_name",
+    "category_id",
+    "category_name",
+    "is_animal"
+  ],
+  "title": "DatasetReferenceAnnotation",
+  "type": "object"
+}

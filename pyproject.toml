@@ -3,22 +3,31 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "wildscope-backend"
+name = "wildscope"
 version = "0.1.0"
-description = "WILDSCOPE AI — Backend API, persistent storage, and integration layer"
+description = "WILDSCOPE AI — Backend API, persistent storage, analytics engine, and decision intelligence"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
+    { name = "Kolachalama Sri Shravan", email = "srishravank@gmail.com" },
     { name = "Santosh Yuvaraj", email = "santoshyuvarajeshwaroju@gmail.com" }
+]
+dependencies = [
+    "pydantic>=2.5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
 ]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["tests/backend"]
+testpaths = ["tests"]
+pythonpath = ["."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --strict-markers"
 filterwarnings = [
     "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
 ]

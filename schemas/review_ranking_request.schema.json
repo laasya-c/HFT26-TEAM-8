@@ -1,0 +1,273 @@
+{
+  "$defs": {
+    "AnalysisMetric": {
+      "description": "Operations supported by the decision intelligence module.\nRejects arbitrary or unsupported queries.\n\nPhase 2 additions:\n- OVERVIEW: snapshot-level summary (encounters, images, cameras, time coverage).\n- SPECIES_ENCOUNTER_COUNTS: deduplicated encounter/species contributions.\n- CAMERA_COMPARISON: per-camera/site encounter and species counts.\n- DAILY_ACTIVITY: encounter counts grouped by calendar date.\n- HOURLY_ACTIVITY: encounter counts grouped by hour-of-day (0-23).\n- SPECIES_CAMERA_MATRIX: species \u00d7 camera count matrix.\n- EFFORT_NORMALISED_RATES: encounters per active camera-day.",
+      "enum": [
+        "overview",
+        "species_encounter_counts",
+        "reference_image_species_counts",
+        "camera_comparison",
+        "daily_activity",
+        "hourly_activity",
+        "species_camera_matrix",
+        "effort_normalised_rates",
+        "cross_camera_associations",
+        "activity_anomaly",
+        "activity_anomalies",
+        "monitoring_blind_spots",
+        "candidate_placement",
+        "candidate_camera_placement",
+        "proximity_indicators",
+        "geofencing_proximity",
+        "infrastructure_scenario",
+        "wildlife_infrastructure_scenarios",
+        "activity_time_distribution",
+        "cross_camera_association",
+        "camera_activity_summary",
+        "monitoring_coverage_summary"
+      ],
+      "title": "AnalysisMetric",
+      "type": "string"
+    },
+    "InclusionPolicy": {
+      "description": "Policy governing which detections are admitted into analytical aggregations.",
+      "enum": [
+        "reviewed_only",
+        "provisional_and_reviewed",
+        "all_detections"
+      ],
+      "title": "InclusionPolicy",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Request payload for conclusion-sensitive review prioritization.\nRanks unreviewed detections by their potential marginal impact on a selected metric.",
+  "properties": {
+    "target_metric": {
+      "$ref": "#/$defs/AnalysisMetric",
+      "description": "Operational metric whose sensitivity guides review priority."
+    },
+    "species_ids": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Scope review ranking to particular species hypotheses.",
+      "title": "Species Ids"
+    },
+    "camera_ids": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Scope review ranking to particular camera traps.",
+      "title": "Camera Ids"
+    },
+    "inclusion_policy": {
+      "$ref": "#/$defs/InclusionPolicy",
+      "default": "provisional_and_reviewed",
+      "description": "Inclusion baseline for computing marginal delta."
+    },
+    "top_k_candidates": {
+      "default": 3,
+      "description": "Number of alternative label candidates evaluated per detection.",
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Top K Candidates",
+      "type": "integer"
+    },
+    "score_margin_threshold": {
+      "default": 0.25,
+      "description": "Ambiguity margin threshold between top species prediction and highest alternative species score (default: 0.25). Detections with margin > threshold in probability score space are considered unambiguous and excluded from the candidate queue unless explicitly flagged for expert review.",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Score Margin Threshold",
+      "type": "number"
+    },
+    "result_limit": {
+      "anyOf": [
+        {
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Maximum number of top-ranked results to return after evaluating all eligible candidates (default: 50). Fewer requested results does NOT mark an otherwise complete response as partial.",
+      "title": "Result Limit"
+    },
+    "max_records_to_rank": {
+      "anyOf": [
+        {
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Backward-compatible alias for result_limit.",
+      "title": "Max Records To Rank"
+    },
+    "evaluation_limit": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Evaluate only a bounded subset of candidate detections during simulation. Applying this limit produces incomplete ranking coverage and sets status to PARTIAL.",
+      "title": "Evaluation Limit"
+    },
+    "evaluation_policy": {
+      "default": "all_eligible",
+      "description": "Selection policy when evaluation_limit is set (e.g. 'all_eligible', 'time_order').",
+      "title": "Evaluation Policy",
+      "type": "string"
+    },
+    "min_confidence": {
+      "default": 0.0,
+      "description": "Minimum detection/classification confidence cutoff for baseline metric parity.",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Min Confidence",
+      "type": "number"
+    },
+    "expected_revision": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Expected dataset revision for consistency.",
+      "title": "Expected Revision"
+    },
+    "target_species_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Focal species for sensitivity ranking (e.g. for SPECIES_ENCOUNTER_COUNTS or CAMERA_COMPARISON).",
+      "title": "Target Species Id"
+    },
+    "camera_id_a": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "First camera identifier for CAMERA_COMPARISON difference metric (camera_a - camera_b).",
+      "title": "Camera Id A"
+    },
+    "camera_id_b": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Second camera identifier for CAMERA_COMPARISON difference metric (camera_a - camera_b).",
+      "title": "Camera Id B"
+    },
+    "start_time": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Start of analysis time window (must be timezone-aware if given).",
+      "title": "Start Time"
+    },
+    "end_time": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "End of analysis time window (must be timezone-aware if given).",
+      "title": "End Time"
+    },
+    "analysis_timezone": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "IANA timezone identifier.",
+      "title": "Analysis Timezone"
+    },
+    "include_zero_impact": {
+      "default": false,
+      "description": "Whether to include candidates whose maximum absolute marginal impact is 0.",
+      "title": "Include Zero Impact",
+      "type": "boolean"
+    },
+    "parameters": {
+      "additionalProperties": true,
+      "description": "Metric-specific documented configuration parameters.",
+      "title": "Parameters",
+      "type": "object"
+    }
+  },
+  "required": [
+    "target_metric"
+  ],
+  "title": "ReviewRankingRequest",
+  "type": "object"
+}
