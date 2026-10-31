@@ -1202,6 +1202,34 @@
           "description": "GeoJSON-compatible geometry dictionary (Polygon, MultiPolygon, etc.).",
           "title": "Geometry",
           "type": "object"
+        },
+        "valid_from": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Start of temporal applicability.",
+          "title": "Valid From"
+        },
+        "valid_to": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "End of temporal applicability.",
+          "title": "Valid To"
         }
       },
       "required": [

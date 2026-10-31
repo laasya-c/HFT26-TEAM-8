@@ -15,10 +15,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from wildscope_analytics.contracts.enums import (
     CalibrationStatus,
+    CandidatePlacementStatus,
     MediaType,
+    PositionType,
     PredictionStatus,
+    ProximityRelation,
     ReviewDecision,
     ScoreType,
+    SpatialSourceType,
     TriageState,
 )
 
@@ -564,6 +568,8 @@ class SpatialZone(BaseContractModel):
         ...,
         description="GeoJSON-compatible geometry dictionary (Polygon, MultiPolygon, etc.)."
     )
+    valid_from: datetime | None = Field(default=None, description="Start of temporal applicability.")
+    valid_to: datetime | None = Field(default=None, description="End of temporal applicability.")
 
     @field_validator("geometry")
     @classmethod
@@ -595,3 +601,99 @@ class SpatialContext(BaseContractModel):
         default=None,
         description="Source of GIS layers and spatial metadata."
     )
+
+
+class CameraCoverage(BaseContractModel):
+    """Declared or modeled spatial coverage for a camera trap."""
+    camera_id: str = Field(..., description="Camera identifier.")
+    geometry: dict[str, Any] | None = Field(
+        default=None,
+        description="GeoJSON-compatible Polygon/MultiPolygon geometry."
+    )
+    source_type: SpatialSourceType = Field(
+        default=SpatialSourceType.ASSUMED,
+        description="Source classification of coverage (measured, assumed, synthetic)."
+    )
+    detection_radius_meters: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Effective detection range radius in meters if geometry is circular/buffer."
+    )
+    azimuth_degrees: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=360.0,
+        description="Compass bearing angle of camera lens."
+    )
+    field_of_view_degrees: float | None = Field(
+        default=None,
+        gt=0.0,
+        le=360.0,
+        description="Horizontal sensor angle of view."
+    )
+    valid_from: datetime | None = Field(default=None, description="Start of coverage interval.")
+    valid_to: datetime | None = Field(default=None, description="End of coverage interval.")
+    provenance: str | None = Field(
+        default=None,
+        description="Documentation of coverage measurement or assumption."
+    )
+
+
+class CandidateSite(BaseContractModel):
+    """Candidate camera placement site for monitoring optimization."""
+    candidate_id: str = Field(..., description="Unique candidate site ID.")
+    name: str | None = Field(default=None, description="Descriptive site label.")
+    latitude: float | None = Field(default=None, ge=-90.0, le=90.0)
+    longitude: float | None = Field(default=None, ge=-180.0, le=180.0)
+    geometry: dict[str, Any] | None = Field(
+        default=None,
+        description="GeoJSON Polygon/MultiPolygon representing modeled viewshed."
+    )
+    coverage_radius_meters: float = Field(
+        default=50.0,
+        gt=0.0,
+        description="Radius in meters if geometry is modeled as circular buffer."
+    )
+    cost: float = Field(
+        default=1.0,
+        gt=0.0,
+        description="Deployment or maintenance cost weight (must be finite positive number)."
+    )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional site features (e.g. accessibility, tree cover)."
+    )
+
+    @field_validator("cost")
+    @classmethod
+    def validate_cost_finite(cls, v: float) -> float:
+        if not math.isfinite(v) or v <= 0.0:
+            raise ValueError(f"CandidateSite cost must be a finite positive number, got {v}")
+        return v
+
+
+class TargetLocation(BaseContractModel):
+    """Spatial coordinate target evaluated against zones or infrastructure."""
+    target_id: str = Field(..., description="Target point identifier (camera ID, encounter ID, etc.).")
+    position_type: PositionType = Field(
+        default=PositionType.CAMERA_SITE,
+        description="Nature of location (camera_site, estimated_animal_position, observation_location)."
+    )
+    latitude: float = Field(..., ge=-90.0, le=90.0, description="WGS84 latitude.")
+    longitude: float = Field(..., ge=-180.0, le=180.0, description="WGS84 longitude.")
+    uncertainty_radius_meters: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Positional uncertainty radius in meters. None indicates uncertainty is unassessed."
+    )
+    associated_camera_id: str | None = Field(default=None, description="Optional associated camera.")
+    associated_encounter_id: str | None = Field(default=None, description="Optional associated encounter.")
+    species_id: str | None = Field(default=None, description="Optional associated focal taxon.")
+    timestamp: datetime | None = Field(default=None, description="Time of observation/estimate.")
+
+    @field_validator("uncertainty_radius_meters")
+    @classmethod
+    def validate_uncertainty_finite(cls, v: float | None) -> float | None:
+        if v is not None and (not math.isfinite(v) or v < 0.0):
+            raise ValueError(f"uncertainty_radius_meters must be a finite non-negative number, got {v}")
+        return v

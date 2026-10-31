@@ -1,0 +1,226 @@
+{
+  "$defs": {
+    "AnalysisMetric": {
+      "description": "Operations supported by the decision intelligence module.\nRejects arbitrary or unsupported queries.\n\nPhase 2 additions:\n- OVERVIEW: snapshot-level summary (encounters, images, cameras, time coverage).\n- SPECIES_ENCOUNTER_COUNTS: deduplicated encounter/species contributions.\n- CAMERA_COMPARISON: per-camera/site encounter and species counts.\n- DAILY_ACTIVITY: encounter counts grouped by calendar date.\n- HOURLY_ACTIVITY: encounter counts grouped by hour-of-day (0-23).\n- SPECIES_CAMERA_MATRIX: species \u00d7 camera count matrix.\n- EFFORT_NORMALISED_RATES: encounters per active camera-day.",
+      "enum": [
+        "overview",
+        "species_encounter_counts",
+        "reference_image_species_counts",
+        "camera_comparison",
+        "daily_activity",
+        "hourly_activity",
+        "species_camera_matrix",
+        "effort_normalised_rates",
+        "cross_camera_associations",
+        "activity_anomaly",
+        "activity_anomalies",
+        "monitoring_blind_spots",
+        "candidate_placement",
+        "candidate_camera_placement",
+        "proximity_indicators",
+        "geofencing_proximity",
+        "infrastructure_scenario",
+        "wildlife_infrastructure_scenarios",
+        "activity_time_distribution",
+        "cross_camera_association",
+        "camera_activity_summary",
+        "monitoring_coverage_summary"
+      ],
+      "title": "AnalysisMetric",
+      "type": "string"
+    },
+    "InclusionPolicy": {
+      "description": "Policy governing which detections are admitted into analytical aggregations.",
+      "enum": [
+        "reviewed_only",
+        "provisional_and_reviewed",
+        "all_detections"
+      ],
+      "title": "InclusionPolicy",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Phase 5 Request payload for activity anomaly indicators (Feature F12).\nCompares recorded encounter activity for a focal species at a camera trap\nagainst that camera's historical baseline.\n\nCRITICAL INTERPRETATION:\nOutputs are reviewable statistical indicators\u2014not proof of population change,\nmigration, poaching, camera failure, or ecological causes.",
+  "properties": {
+    "metric": {
+      "$ref": "#/$defs/AnalysisMetric",
+      "default": "activity_anomaly",
+      "description": "Selected operational metric: ACTIVITY_ANOMALY."
+    },
+    "baseline_start_time": {
+      "description": "Start of baseline historical time window (start-inclusive, timezone-aware).",
+      "format": "date-time",
+      "title": "Baseline Start Time",
+      "type": "string"
+    },
+    "baseline_end_time": {
+      "description": "End of baseline historical time window (end-exclusive, timezone-aware).",
+      "format": "date-time",
+      "title": "Baseline End Time",
+      "type": "string"
+    },
+    "evaluation_start_time": {
+      "description": "Start of evaluation time window (start-inclusive, timezone-aware).",
+      "format": "date-time",
+      "title": "Evaluation Start Time",
+      "type": "string"
+    },
+    "evaluation_end_time": {
+      "description": "End of evaluation time window (end-exclusive, timezone-aware).",
+      "format": "date-time",
+      "title": "Evaluation End Time",
+      "type": "string"
+    },
+    "analysis_timezone": {
+      "default": "UTC",
+      "description": "IANA timezone identifier for day-bin boundaries and interval localization.",
+      "title": "Analysis Timezone",
+      "type": "string"
+    },
+    "species_ids": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional list of focal species to evaluate. None evaluates all eligible species in scope.",
+      "title": "Species Ids"
+    },
+    "camera_ids": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional list of camera IDs to evaluate. Each camera is evaluated as an independent series.",
+      "title": "Camera Ids"
+    },
+    "site_ids": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional list of site IDs to scope cameras.",
+      "title": "Site Ids"
+    },
+    "min_baseline_days": {
+      "default": 7,
+      "description": "Minimum number of valid active baseline calendar days required for evaluation (default: 7).",
+      "minimum": 1,
+      "title": "Min Baseline Days",
+      "type": "integer"
+    },
+    "min_baseline_active_effort_days": {
+      "default": 5.0,
+      "description": "Minimum total active baseline effort in camera-days required (default: 5.0).",
+      "minimum": 0.0,
+      "title": "Min Baseline Active Effort Days",
+      "type": "number"
+    },
+    "min_evaluation_active_effort_days": {
+      "default": 1.0,
+      "description": "Minimum active evaluation effort in camera-days required (default: 1.0).",
+      "minimum": 0.0,
+      "title": "Min Evaluation Active Effort Days",
+      "type": "number"
+    },
+    "min_day_coverage_ratio": {
+      "default": 0.5,
+      "description": "Minimum fraction of the actual local calendar-day duration covered by active monitoring to qualify as a valid baseline day (default: 0.5 = 50% of local day, e.g. 12h on standard 24h days, 11.5h on 23h DST spring-forward days, 12.5h on 25h DST fall-back days).",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Min Day Coverage Ratio",
+      "type": "number"
+    },
+    "anomaly_threshold_sigmas": {
+      "default": 3.0,
+      "description": "Number of normal-consistent MAD dispersions from baseline median required for anomaly alert (default: 3.0).",
+      "minimum": 0.0,
+      "title": "Anomaly Threshold Sigmas",
+      "type": "number"
+    },
+    "min_absolute_rate_change": {
+      "default": 0.2,
+      "description": "Minimum absolute rate change (encounters/active camera-day) required to prevent spurious micro-alerts (default: 0.2).",
+      "minimum": 0.0,
+      "title": "Min Absolute Rate Change",
+      "type": "number"
+    },
+    "allow_zero_dispersion_absolute_fallback": {
+      "default": true,
+      "description": "Whether to allow absolute threshold alerts when baseline dispersion MAD is zero.",
+      "title": "Allow Zero Dispersion Absolute Fallback",
+      "type": "boolean"
+    },
+    "allow_suspect_comparability": {
+      "default": false,
+      "description": "Whether to evaluate anomaly indicators when stationarity is SUSPECT_OR_CHANGED. When False (default policy), series with suspected camera repositioning, model version changes, or deployment shifts are classified as NOT_EVALUABLE. When True, indicators are computed with explicit qualification warnings.",
+      "title": "Allow Suspect Comparability",
+      "type": "boolean"
+    },
+    "inclusion_policy": {
+      "$ref": "#/$defs/InclusionPolicy",
+      "default": "provisional_and_reviewed",
+      "description": "Policy governing which detections within encounters are admitted."
+    },
+    "min_confidence": {
+      "default": 0.0,
+      "description": "Minimum classification confidence cutoff.",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Min Confidence",
+      "type": "number"
+    },
+    "expected_revision": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Expected dataset revision for optimistic concurrency.",
+      "title": "Expected Revision"
+    },
+    "parameters": {
+      "additionalProperties": true,
+      "description": "Optional additional parameters.",
+      "title": "Parameters",
+      "type": "object"
+    }
+  },
+  "required": [
+    "baseline_start_time",
+    "baseline_end_time",
+    "evaluation_start_time",
+    "evaluation_end_time"
+  ],
+  "title": "ActivityAnomalyRequest",
+  "type": "object"
+}

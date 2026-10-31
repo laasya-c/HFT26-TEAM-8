@@ -1,0 +1,433 @@
+{
+  "$defs": {
+    "ActivityAnomalySeriesResult": {
+      "additionalProperties": false,
+      "description": "Statistical anomaly indicator evaluation for an independent camera/species series (Feature F12).",
+      "properties": {
+        "camera_id": {
+          "description": "Camera trap evaluated.",
+          "title": "Camera Id",
+          "type": "string"
+        },
+        "species_id": {
+          "description": "Focal species evaluated.",
+          "title": "Species Id",
+          "type": "string"
+        },
+        "site_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Site identifier if known.",
+          "title": "Site Id"
+        },
+        "outcome": {
+          "$ref": "#/$defs/AnomalyOutcome",
+          "description": "Anomaly classification outcome."
+        },
+        "baseline_start_time": {
+          "description": "Start of baseline window.",
+          "format": "date-time",
+          "title": "Baseline Start Time",
+          "type": "string"
+        },
+        "baseline_end_time": {
+          "description": "End of baseline window.",
+          "format": "date-time",
+          "title": "Baseline End Time",
+          "type": "string"
+        },
+        "baseline_calendar_days_total": {
+          "description": "Total calendar days spanned by baseline window.",
+          "minimum": 0,
+          "title": "Baseline Calendar Days Total",
+          "type": "integer"
+        },
+        "baseline_valid_active_days": {
+          "description": "Number of baseline days meeting minimum active coverage.",
+          "minimum": 0,
+          "title": "Baseline Valid Active Days",
+          "type": "integer"
+        },
+        "baseline_total_active_effort_days": {
+          "description": "Sum of active camera-days across valid baseline days.",
+          "minimum": 0.0,
+          "title": "Baseline Total Active Effort Days",
+          "type": "number"
+        },
+        "baseline_median_daily_rate": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Robust baseline centre: median daily encounter rate across valid days.",
+          "title": "Baseline Median Daily Rate"
+        },
+        "baseline_mad_daily_rate": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Robust baseline dispersion: median absolute deviation (MAD) of daily rates.",
+          "title": "Baseline Mad Daily Rate"
+        },
+        "baseline_dispersion_sigma": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Normal-consistent scale estimate: 1.4826 * MAD.",
+          "title": "Baseline Dispersion Sigma"
+        },
+        "evaluation_start_time": {
+          "description": "Start of evaluation window.",
+          "format": "date-time",
+          "title": "Evaluation Start Time",
+          "type": "string"
+        },
+        "evaluation_end_time": {
+          "description": "End of evaluation window.",
+          "format": "date-time",
+          "title": "Evaluation End Time",
+          "type": "string"
+        },
+        "evaluation_active_effort_days": {
+          "description": "Active camera-days in evaluation window.",
+          "minimum": 0.0,
+          "title": "Evaluation Active Effort Days",
+          "type": "number"
+        },
+        "evaluation_encounter_count": {
+          "description": "Focal species encounters in evaluation active intervals.",
+          "minimum": 0,
+          "title": "Evaluation Encounter Count",
+          "type": "integer"
+        },
+        "evaluation_encounter_rate": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Encounters per active camera-day in evaluation window.",
+          "title": "Evaluation Encounter Rate"
+        },
+        "absolute_rate_change": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Evaluation rate minus baseline median rate (R_eval - R_tilde).",
+          "title": "Absolute Rate Change"
+        },
+        "relative_rate_change": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Relative rate change ((R_eval - R_tilde) / R_tilde). None if R_tilde == 0.",
+          "title": "Relative Rate Change"
+        },
+        "anomaly_score_sigmas": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of robust dispersion sigmas from baseline median ((R_eval - R_tilde) / sigma). None if sigma == 0.",
+          "title": "Anomaly Score Sigmas"
+        },
+        "comparability_assessment": {
+          "$ref": "#/$defs/ComparabilityAssessment",
+          "default": "unassessed",
+          "description": "Operational stationarity assessment across baseline and evaluation."
+        },
+        "comparability_notes": {
+          "description": "Explicit observations regarding deployment, hardware, or model stability.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Comparability Notes",
+          "type": "array"
+        },
+        "evaluation_notes": {
+          "description": "Detailed contextual evaluation notes and qualification warnings.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Evaluation Notes",
+          "type": "array"
+        },
+        "out_of_effort_encounters_count": {
+          "default": 0,
+          "description": "Encounters recorded outside active effort intervals (flagged and excluded from rate calculations).",
+          "minimum": 0,
+          "title": "Out Of Effort Encounters Count",
+          "type": "integer"
+        },
+        "baseline_daily_bins": {
+          "description": "Full daily breakdown for auditing and transparent visualization.",
+          "items": {
+            "$ref": "#/$defs/BaselineDailyBin"
+          },
+          "title": "Baseline Daily Bins",
+          "type": "array"
+        },
+        "disclaimer": {
+          "default": "Reviewable statistical indicator only. Comparing an aggregate evaluation rate with daily baseline MAD is a standardized descriptive deviation ratio (an exploratory heuristic), not a calibrated significance level, hypothesis test p-value, or probability of true biological change. Does not prove population change, migration, poaching, camera malfunction, or ecological causation.",
+          "description": "Mandatory scientific disclaimer.",
+          "title": "Disclaimer",
+          "type": "string"
+        }
+      },
+      "required": [
+        "camera_id",
+        "species_id",
+        "outcome",
+        "baseline_start_time",
+        "baseline_end_time",
+        "baseline_calendar_days_total",
+        "baseline_valid_active_days",
+        "baseline_total_active_effort_days",
+        "evaluation_start_time",
+        "evaluation_end_time",
+        "evaluation_active_effort_days",
+        "evaluation_encounter_count"
+      ],
+      "title": "ActivityAnomalySeriesResult",
+      "type": "object"
+    },
+    "AnomalyOutcome": {
+      "description": "Outcome of an activity anomaly evaluation on a camera/species series (Phase 5, Feature F12).\n- INCREASED: Evaluation encounter rate exceeded baseline dispersion and absolute threshold.\n- DECREASED: Evaluation encounter rate dropped below baseline dispersion and absolute threshold.\n- NO_INDICATOR: No configured anomaly rule triggered (does NOT prove ecological normalcy).\n- NOT_EVALUABLE: History, active effort, or coverage was insufficient to evaluate.",
+      "enum": [
+        "increased",
+        "decreased",
+        "no_indicator",
+        "not_evaluable"
+      ],
+      "title": "AnomalyOutcome",
+      "type": "string"
+    },
+    "BaselineDailyBin": {
+      "additionalProperties": false,
+      "description": "Daily effort and encounter bin for historical baseline calculations (Feature F12).",
+      "properties": {
+        "date": {
+          "description": "Calendar date in ISO format YYYY-MM-DD under analysis timezone.",
+          "title": "Date",
+          "type": "string"
+        },
+        "active_seconds": {
+          "description": "Total active monitoring effort in seconds during this day.",
+          "minimum": 0.0,
+          "title": "Active Seconds",
+          "type": "number"
+        },
+        "active_camera_days": {
+          "description": "Active effort in camera-days (active_seconds / 86400.0).",
+          "minimum": 0.0,
+          "title": "Active Camera Days",
+          "type": "number"
+        },
+        "coverage_ratio": {
+          "description": "Fraction of day covered by active monitoring effort.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Coverage Ratio",
+          "type": "number"
+        },
+        "is_valid_baseline_day": {
+          "description": "True if coverage_ratio meets min_day_coverage_ratio.",
+          "title": "Is Valid Baseline Day",
+          "type": "boolean"
+        },
+        "encounter_count": {
+          "description": "Encounter count of focal species during active intervals of this day.",
+          "minimum": 0,
+          "title": "Encounter Count",
+          "type": "integer"
+        },
+        "daily_encounter_rate": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Encounters per active camera-day (encounter_count / active_camera_days). None if day is excluded.",
+          "title": "Daily Encounter Rate"
+        }
+      },
+      "required": [
+        "date",
+        "active_seconds",
+        "active_camera_days",
+        "coverage_ratio",
+        "is_valid_baseline_day",
+        "encounter_count"
+      ],
+      "title": "BaselineDailyBin",
+      "type": "object"
+    },
+    "ComparabilityAssessment": {
+      "description": "Operational stationarity assessment between baseline and evaluation periods.\n- VERIFIED_COMPARABLE: Verified that deployment, camera, and model remained stationary.\n- UNASSESSED: Stationarity unassessed due to missing deployment audit metadata.\n- SUSPECT_OR_CHANGED: Known repositioning, hardware change, or pipeline version difference detected.",
+      "enum": [
+        "verified_comparable",
+        "unassessed",
+        "suspect_or_changed"
+      ],
+      "title": "ComparabilityAssessment",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Complete typed payload for activity anomaly indicators (Feature F12).",
+  "properties": {
+    "data_source_mode": {
+      "description": "Snapshot data source mode.",
+      "title": "Data Source Mode",
+      "type": "string"
+    },
+    "metric": {
+      "default": "activity_anomaly",
+      "description": "Operational metric identifier.",
+      "title": "Metric",
+      "type": "string"
+    },
+    "analysis_timezone": {
+      "description": "Timezone used for calendar day binning.",
+      "title": "Analysis Timezone",
+      "type": "string"
+    },
+    "baseline_start_time": {
+      "description": "Baseline start time.",
+      "format": "date-time",
+      "title": "Baseline Start Time",
+      "type": "string"
+    },
+    "baseline_end_time": {
+      "description": "Baseline end time.",
+      "format": "date-time",
+      "title": "Baseline End Time",
+      "type": "string"
+    },
+    "evaluation_start_time": {
+      "description": "Evaluation start time.",
+      "format": "date-time",
+      "title": "Evaluation Start Time",
+      "type": "string"
+    },
+    "evaluation_end_time": {
+      "description": "Evaluation end time.",
+      "format": "date-time",
+      "title": "Evaluation End Time",
+      "type": "string"
+    },
+    "total_series_evaluated": {
+      "description": "Total independent camera/species series evaluated.",
+      "minimum": 0,
+      "title": "Total Series Evaluated",
+      "type": "integer"
+    },
+    "increased_count": {
+      "default": 0,
+      "description": "Count of series with INCREASED activity indicator.",
+      "minimum": 0,
+      "title": "Increased Count",
+      "type": "integer"
+    },
+    "decreased_count": {
+      "default": 0,
+      "description": "Count of series with DECREASED activity indicator.",
+      "minimum": 0,
+      "title": "Decreased Count",
+      "type": "integer"
+    },
+    "no_indicator_count": {
+      "default": 0,
+      "description": "Count of series with NO_INDICATOR.",
+      "minimum": 0,
+      "title": "No Indicator Count",
+      "type": "integer"
+    },
+    "not_evaluable_count": {
+      "default": 0,
+      "description": "Count of series that were NOT_EVALUABLE.",
+      "minimum": 0,
+      "title": "Not Evaluable Count",
+      "type": "integer"
+    },
+    "series": {
+      "description": "Independent results for each camera/species series.",
+      "items": {
+        "$ref": "#/$defs/ActivityAnomalySeriesResult"
+      },
+      "title": "Series",
+      "type": "array"
+    },
+    "disclaimer": {
+      "default": "Statistical anomaly indicators are reviewable operational signals. Comparing aggregate evaluation rates with daily baseline MAD is an exploratory heuristic, not a calibrated significance level or p-value. They do not constitute proof of biological or ecological change, nor camera failure. Unmonitored intervals, seasonality, and detection probability variation must be evaluated before drawing conclusions.",
+      "description": "Mandatory global scientific disclaimer.",
+      "title": "Disclaimer",
+      "type": "string"
+    }
+  },
+  "required": [
+    "data_source_mode",
+    "analysis_timezone",
+    "baseline_start_time",
+    "baseline_end_time",
+    "evaluation_start_time",
+    "evaluation_end_time",
+    "total_series_evaluated"
+  ],
+  "title": "ActivityAnomaliesResult",
+  "type": "object"
+}

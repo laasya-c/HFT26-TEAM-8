@@ -148,7 +148,37 @@ def compute_cross_camera_associations(
     temporal, and optional spatial rules.
     """
     # 1. Normalize request to CrossCameraAssociationRequest
-    if isinstance(request, AnalysisRequest):
+    if isinstance(request, dict):
+        try:
+            assoc_req = CrossCameraAssociationRequest(**request)
+        except Exception:
+            params = request.get("parameters") or request
+            policy_raw = params.get("clock_comparability_policy", ClockComparabilityPolicy.ANALYST_ASSUMPTION)
+            clock_policy = policy_raw if isinstance(policy_raw, ClockComparabilityPolicy) else ClockComparabilityPolicy(policy_raw)
+            spatial_raw = params.get("spatial_mode", SpatialMode.TIME_SPECIES_ONLY)
+            sp_mode = spatial_raw if isinstance(spatial_raw, SpatialMode) else SpatialMode(spatial_raw)
+            assoc_req = CrossCameraAssociationRequest(
+                metric=request.get("metric", AnalysisMetric.CROSS_CAMERA_ASSOCIATIONS),
+                species_ids=request.get("species_ids"),
+                camera_ids=request.get("camera_ids"),
+                site_ids=request.get("site_ids"),
+                start_time=request.get("start_time"),
+                end_time=request.get("end_time"),
+                analysis_timezone=request.get("analysis_timezone", "UTC"),
+                max_temporal_separation_seconds=params.get("max_temporal_separation_seconds", 3600.0),
+                clock_comparability_policy=clock_policy,
+                clock_uncertainty_seconds=params.get("clock_uncertainty_seconds", 0.0),
+                spatial_mode=sp_mode,
+                max_spatial_distance_meters=params.get("max_spatial_distance_meters", None),
+                inclusion_policy=request.get("inclusion_policy", InclusionPolicy.ALL_PROVISIONAL),
+                min_confidence=request.get("min_confidence", 0.0),
+                result_limit=params.get("result_limit", 50),
+                evaluation_limit=params.get("evaluation_limit", None),
+                evaluation_policy=params.get("evaluation_policy", "all_eligible"),
+                expected_revision=request.get("expected_revision"),
+                parameters=params,
+            )
+    elif isinstance(request, AnalysisRequest):
         params = request.parameters or {}
         policy_raw = params.get("clock_comparability_policy", ClockComparabilityPolicy.ANALYST_ASSUMPTION)
         clock_policy = policy_raw if isinstance(policy_raw, ClockComparabilityPolicy) else ClockComparabilityPolicy(policy_raw)

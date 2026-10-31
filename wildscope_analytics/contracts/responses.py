@@ -7,6 +7,7 @@ by analysis and review-ranking pipelines to the frontend (Laasya) and API (Santo
 """
 
 from __future__ import annotations
+from datetime import datetime
 from typing import Any, Generic, TypeVar
 
 from pydantic import Field
@@ -14,7 +15,13 @@ from pydantic import Field
 from wildscope_analytics.contracts.entities import BaseContractModel
 from wildscope_analytics.contracts.enums import (
     AnalysisMetric,
+    AnomalyOutcome,
+    CandidatePlacementStatus,
+    ComparabilityAssessment,
+    PositionType,
+    ProximityRelation,
     ResponseStatus,
+    SpatialSourceType,
     ValidationErrorCode,
 )
 from wildscope_analytics.contracts.snapshot import CURRENT_SCHEMA_VERSION
@@ -257,3 +264,291 @@ class CrossCameraAssociationsResult(BaseContractModel):
         default="Camera separation is not animal travel distance; biological movement feasibility is not validated.",
         description="Spatial measurement limitation."
     )
+
+
+class BaselineDailyBin(BaseContractModel):
+    """Daily effort and encounter bin for historical baseline calculations (Feature F12)."""
+    date: str = Field(..., description="Calendar date in ISO format YYYY-MM-DD under analysis timezone.")
+    active_seconds: float = Field(..., ge=0.0, description="Total active monitoring effort in seconds during this day.")
+    active_camera_days: float = Field(..., ge=0.0, description="Active effort in camera-days (active_seconds / 86400.0).")
+    coverage_ratio: float = Field(..., ge=0.0, le=1.0, description="Fraction of day covered by active monitoring effort.")
+    is_valid_baseline_day: bool = Field(..., description="True if coverage_ratio meets min_day_coverage_ratio.")
+    encounter_count: int = Field(..., ge=0, description="Encounter count of focal species during active intervals of this day.")
+    daily_encounter_rate: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Encounters per active camera-day (encounter_count / active_camera_days). None if day is excluded."
+    )
+
+
+class ActivityAnomalySeriesResult(BaseContractModel):
+    """Statistical anomaly indicator evaluation for an independent camera/species series (Feature F12)."""
+    camera_id: str = Field(..., description="Camera trap evaluated.")
+    species_id: str = Field(..., description="Focal species evaluated.")
+    site_id: str | None = Field(default=None, description="Site identifier if known.")
+    outcome: AnomalyOutcome = Field(..., description="Anomaly classification outcome.")
+    baseline_start_time: datetime = Field(..., description="Start of baseline window.")
+    baseline_end_time: datetime = Field(..., description="End of baseline window.")
+    baseline_calendar_days_total: int = Field(..., ge=0, description="Total calendar days spanned by baseline window.")
+    baseline_valid_active_days: int = Field(..., ge=0, description="Number of baseline days meeting minimum active coverage.")
+    baseline_total_active_effort_days: float = Field(..., ge=0.0, description="Sum of active camera-days across valid baseline days.")
+    baseline_median_daily_rate: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Robust baseline centre: median daily encounter rate across valid days."
+    )
+    baseline_mad_daily_rate: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Robust baseline dispersion: median absolute deviation (MAD) of daily rates."
+    )
+    baseline_dispersion_sigma: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Normal-consistent scale estimate: 1.4826 * MAD."
+    )
+    evaluation_start_time: datetime = Field(..., description="Start of evaluation window.")
+    evaluation_end_time: datetime = Field(..., description="End of evaluation window.")
+    evaluation_active_effort_days: float = Field(..., ge=0.0, description="Active camera-days in evaluation window.")
+    evaluation_encounter_count: int = Field(..., ge=0, description="Focal species encounters in evaluation active intervals.")
+    evaluation_encounter_rate: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Encounters per active camera-day in evaluation window."
+    )
+    absolute_rate_change: float | None = Field(
+        default=None,
+        description="Evaluation rate minus baseline median rate (R_eval - R_tilde)."
+    )
+    relative_rate_change: float | None = Field(
+        default=None,
+        description="Relative rate change ((R_eval - R_tilde) / R_tilde). None if R_tilde == 0."
+    )
+    anomaly_score_sigmas: float | None = Field(
+        default=None,
+        description="Number of robust dispersion sigmas from baseline median ((R_eval - R_tilde) / sigma). None if sigma == 0."
+    )
+    comparability_assessment: ComparabilityAssessment = Field(
+        default=ComparabilityAssessment.UNASSESSED,
+        description="Operational stationarity assessment across baseline and evaluation."
+    )
+    comparability_notes: list[str] = Field(
+        default_factory=list,
+        description="Explicit observations regarding deployment, hardware, or model stability."
+    )
+    evaluation_notes: list[str] = Field(
+        default_factory=list,
+        description="Detailed contextual evaluation notes and qualification warnings."
+    )
+    out_of_effort_encounters_count: int = Field(
+        default=0,
+        ge=0,
+        description="Encounters recorded outside active effort intervals (flagged and excluded from rate calculations)."
+    )
+    baseline_daily_bins: list[BaselineDailyBin] = Field(
+        default_factory=list,
+        description="Full daily breakdown for auditing and transparent visualization."
+    )
+    disclaimer: str = Field(
+        default=(
+            "Reviewable statistical indicator only. Comparing an aggregate evaluation rate with daily baseline MAD "
+            "is a standardized descriptive deviation ratio (an exploratory heuristic), not a calibrated significance level, "
+            "hypothesis test p-value, or probability of true biological change. Does not prove population change, "
+            "migration, poaching, camera malfunction, or ecological causation."
+        ),
+        description="Mandatory scientific disclaimer."
+    )
+
+
+class ActivityAnomaliesResult(BaseContractModel):
+    """Complete typed payload for activity anomaly indicators (Feature F12)."""
+    data_source_mode: str = Field(..., description="Snapshot data source mode.")
+    metric: str = Field(default="activity_anomaly", description="Operational metric identifier.")
+    analysis_timezone: str = Field(..., description="Timezone used for calendar day binning.")
+    baseline_start_time: datetime = Field(..., description="Baseline start time.")
+    baseline_end_time: datetime = Field(..., description="Baseline end time.")
+    evaluation_start_time: datetime = Field(..., description="Evaluation start time.")
+    evaluation_end_time: datetime = Field(..., description="Evaluation end time.")
+    total_series_evaluated: int = Field(..., ge=0, description="Total independent camera/species series evaluated.")
+    increased_count: int = Field(0, ge=0, description="Count of series with INCREASED activity indicator.")
+    decreased_count: int = Field(0, ge=0, description="Count of series with DECREASED activity indicator.")
+    no_indicator_count: int = Field(0, ge=0, description="Count of series with NO_INDICATOR.")
+    not_evaluable_count: int = Field(0, ge=0, description="Count of series that were NOT_EVALUABLE.")
+    series: list[ActivityAnomalySeriesResult] = Field(
+        default_factory=list,
+        description="Independent results for each camera/species series."
+    )
+    disclaimer: str = Field(
+        default=(
+            "Statistical anomaly indicators are reviewable operational signals. Comparing aggregate evaluation rates "
+            "with daily baseline MAD is an exploratory heuristic, not a calibrated significance level or p-value. "
+            "They do not constitute proof of biological or ecological change, nor camera failure. Unmonitored intervals, "
+            "seasonality, and detection probability variation must be evaluated before drawing conclusions."
+        ),
+        description="Mandatory global scientific disclaimer."
+    )
+
+
+class BlindSpotResult(BaseContractModel):
+    """Complete typed payload for monitoring blind spot analysis (Feature F08)."""
+    data_source_mode: str = Field(..., description="Snapshot data source mode.")
+    metric: str = Field(default="monitoring_blind_spots", description="Operational metric identifier.")
+    projection_method: str = Field(..., description="Geodesic or projection method used for planar area.")
+    study_area_sq_meters: float = Field(..., ge=0.0, description="Total study area in square meters.")
+    study_area_sq_km: float = Field(..., ge=0.0, description="Total study area in square kilometers.")
+    covered_area_sq_meters: float = Field(..., ge=0.0, description="Total covered area in square meters.")
+    covered_area_sq_km: float = Field(..., ge=0.0, description="Total covered area in square kilometers.")
+    uncovered_area_sq_meters: float = Field(..., ge=0.0, description="Total uncovered (gap) area in square meters.")
+    uncovered_area_sq_km: float = Field(..., ge=0.0, description="Total uncovered (gap) area in square kilometers.")
+    coverage_fraction: float = Field(..., ge=0.0, le=1.0, description="Fraction of study area covered [0.0, 1.0].")
+    gap_polygons_count: int = Field(..., ge=0, description="Number of disjoint gap polygons.")
+    gap_polygons: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="GeoJSON Polygon geometries for uncovered gap areas in [lon, lat] coordinates."
+    )
+    active_cameras_evaluated_count: int = Field(..., ge=0, description="Number of cameras contributing coverage.")
+    is_coverage_complete: bool = Field(default=True, description="Whether coverage inventory was complete.")
+    coverage_inventory_status: str = Field(
+        default="complete_active",
+        description="Inventory status: 'complete_active', 'complete_zero', 'partial', or 'unassessed'."
+    )
+    source_classification: SpatialSourceType = Field(
+        default=SpatialSourceType.ASSUMED,
+        description="Source classification of coverage (measured, assumed, synthetic)."
+    )
+    disclaimer: str = Field(
+        default=(
+            "Calculated from declared/assumed camera coverage geometry. Represents area outside declared coverage, "
+            "NOT field-validated wildlife absence or proven lack of animal occurrence."
+        ),
+        description="Mandatory scientific disclaimer."
+    )
+
+
+class CandidatePlacementItem(BaseContractModel):
+    """Single ranked candidate placement site evaluation (Feature F09)."""
+    candidate_id: str = Field(..., description="Unique candidate site ID.")
+    rank: int | None = Field(default=None, ge=1, description="Priority rank (1 = highest marginal benefit), None if excluded.")
+    status: CandidatePlacementStatus = Field(..., description="Feasibility status (feasible, excluded, redundant).")
+    marginal_coverage_gain_sq_meters: float = Field(..., ge=0.0, description="Marginal unmonitored area gained in m^2.")
+    marginal_coverage_gain_sq_km: float = Field(..., ge=0.0, description="Marginal unmonitored area gained in km^2.")
+    score: float = Field(..., ge=0.0, description="Efficiency score (marginal gain / cost).")
+    cost: float = Field(..., gt=0.0, description="Deployment cost weight.")
+    overlap_with_baseline_sq_meters: float = Field(..., ge=0.0, description="Overlap area with existing baseline coverage in m^2.")
+    is_in_exclusion_zone: bool = Field(default=False, description="Whether candidate site falls in an exclusion zone.")
+    exclusion_reasons: list[str] = Field(default_factory=list, description="Reasons for exclusion if applicable.")
+    notes: str | None = Field(default=None, description="Contextual evaluation notes.")
+
+
+class CandidatePlacementResult(BaseContractModel):
+    """Complete typed payload for candidate camera placement ranking (Feature F09)."""
+    data_source_mode: str = Field(..., description="Snapshot data source mode.")
+    metric: str = Field(default="candidate_placement", description="Operational metric identifier.")
+    projection_method: str = Field(..., description="Geodesic or projection method used for planar area.")
+    study_area_sq_meters: float = Field(..., ge=0.0, description="Total study area in square meters.")
+    baseline_covered_area_sq_meters: float = Field(..., ge=0.0, description="Existing baseline coverage in m^2.")
+    baseline_coverage_fraction: float = Field(..., ge=0.0, le=1.0, description="Baseline coverage fraction [0.0, 1.0].")
+    ranked_candidates: list[CandidatePlacementItem] = Field(
+        default_factory=list,
+        description="Ranked eligible candidate camera placement sites."
+    )
+    excluded_candidates: list[CandidatePlacementItem] = Field(
+        default_factory=list,
+        description="Excluded candidate camera placement sites (e.g. falling inside exclusion zones)."
+    )
+    total_candidates: int = Field(..., ge=0, description="Total candidate sites evaluated.")
+    feasible_candidates_count: int = Field(..., ge=0, description="Count of feasible candidates.")
+    excluded_candidates_count: int = Field(..., ge=0, description="Count of excluded candidates.")
+    marginal_analysis_disclaimer: str = Field(
+        default=(
+            "Candidate ranks reflect single-site marginal coverage gain over the baseline. Marginal gains are NOT "
+            "additive; placing multiple candidates simultaneously requires joint combinatorial evaluation as candidate "
+            "viewsheds may overlap."
+        ),
+        description="Mandatory non-additivity disclaimer."
+    )
+    disclaimer: str = Field(
+        default=(
+            "Candidate camera placement ranking is a decision-support tool based on declared spatial assumptions. "
+            "It does not guarantee optimal field detection probability, animal visibility, terrain accessibility, or equipment security."
+        ),
+        description="Mandatory scientific disclaimer."
+    )
+
+
+class TargetProximityItem(BaseContractModel):
+    """Proximity evaluation between a target location and a spatial zone/infrastructure (Feature F14)."""
+    target_id: str = Field(..., description="Target point identifier.")
+    position_type: PositionType = Field(..., description="Nature of location (camera_site, estimated_animal_position, etc.).")
+    zone_id: str = Field(..., description="Spatial zone or infrastructure identifier.")
+    zone_name: str = Field(..., description="Human-readable zone label.")
+    zone_type: str = Field(..., description="Zone category (e.g. core_reserve, road_corridor).")
+    relation: ProximityRelation = Field(..., description="Topological relationship (inside, outside, boundary, indeterminate).")
+    region_distance_meters: float = Field(..., ge=0.0, description="Shortest distance to zone interior (0.0 if inside).")
+    boundary_distance_meters: float = Field(..., ge=0.0, description="Shortest distance to zone boundary in meters.")
+    within_threshold: bool = Field(..., description="Whether location is nominally within declared proximity threshold.")
+    threshold_status: str = Field(
+        default="definitely_outside",
+        description="'definitely_within', 'definitely_outside', or 'uncertain' due to positional uncertainty."
+    )
+    proximity_threshold_meters: float = Field(..., ge=0.0, description="Evaluation threshold in meters.")
+    uncertainty_radius_meters: float = Field(0.0, ge=0.0, description="Positional uncertainty radius in meters.")
+    uncertainty_status: str = Field(default="unassessed", description="'assessed' or 'unassessed'.")
+    position_description: str = Field(..., description="Clear contextual description distinguishing camera site from animal position.")
+    warning: str | None = Field(default=None, description="Caveats or notes on boundary uncertainty.")
+
+
+class ProximityResult(BaseContractModel):
+    """Complete typed payload for geofencing and proximity indicators (Feature F14)."""
+    data_source_mode: str = Field(..., description="Snapshot data source mode.")
+    metric: str = Field(default="proximity_indicators", description="Operational metric identifier.")
+    projection_method: str = Field(..., description="Projection or distance measurement method.")
+    targets_evaluated_count: int = Field(..., ge=0, description="Total targets evaluated.")
+    zones_evaluated_count: int = Field(..., ge=0, description="Total zones/infrastructure features evaluated.")
+    evaluations: list[TargetProximityItem] = Field(
+        default_factory=list,
+        description="Pairwise target-zone proximity evaluations."
+    )
+    disclaimer: str = Field(
+        default=(
+            "Proximity indicators reflect geometric distance between supplied coordinates and zone boundaries under "
+            "the declared projection. For camera sites, this indicates physical device placement proximity, NOT animal "
+            "geofence crossing. Positional uncertainty can cause indeterminate boundary relations. Descriptive indicator "
+            "only; no threat or danger score is assigned."
+        ),
+        description="Mandatory scientific disclaimer."
+    )
+
+
+class InfrastructureScenarioResult(BaseContractModel):
+    """Complete typed payload for wildlife-infrastructure scenario analysis (Feature F16)."""
+    scenario_id: str = Field(..., description="Unique scenario identifier.")
+    scenario_name: str = Field(..., description="Descriptive scenario name.")
+    projection_method: str = Field(..., description="Projection or distance measurement method.")
+    source_classification: SpatialSourceType = Field(
+        default=SpatialSourceType.HYPOTHETICAL,
+        description="Classification of scenario features."
+    )
+    study_area_sq_meters: float = Field(..., ge=0.0, description="Study area in square meters.")
+    baseline_covered_sq_meters: float = Field(..., ge=0.0, description="Baseline covered area in square meters.")
+    baseline_coverage_fraction: float = Field(..., ge=0.0, le=1.0, description="Baseline coverage fraction [0.0, 1.0].")
+    scenario_covered_sq_meters: float = Field(..., ge=0.0, description="Scenario covered area in square meters.")
+    scenario_coverage_fraction: float = Field(..., ge=0.0, le=1.0, description="Scenario coverage fraction [0.0, 1.0].")
+    absolute_change_sq_meters: float = Field(..., description="Absolute change in covered area (scenario - baseline) in m^2.")
+    relative_change_fraction: float | None = Field(default=None, description="Relative change in coverage fraction ((scen - base) / base).")
+    hypothetical_features_applied: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Summary of hypothetical features applied in scenario."
+    )
+    assumptions: list[str] = Field(
+        default_factory=list,
+        description="Explicit scenario assumptions."
+    )
+    disclaimer: str = Field(
+        default=(
+            "Hypothetical scenario analysis only. Evaluates geometric coverage and proximity changes under explicit "
+            "assumptions. Does not predict ecological impacts, animal movement route displacement, or population viability changes."
+        ),
+        description="Mandatory scientific disclaimer."
+    )
+

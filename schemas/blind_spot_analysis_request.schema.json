@@ -1,0 +1,253 @@
+{
+  "$defs": {
+    "CameraCoverage": {
+      "additionalProperties": false,
+      "description": "Declared or modeled spatial coverage for a camera trap.",
+      "properties": {
+        "camera_id": {
+          "description": "Camera identifier.",
+          "title": "Camera Id",
+          "type": "string"
+        },
+        "geometry": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GeoJSON-compatible Polygon/MultiPolygon geometry.",
+          "title": "Geometry"
+        },
+        "source_type": {
+          "$ref": "#/$defs/SpatialSourceType",
+          "default": "assumed",
+          "description": "Source classification of coverage (measured, assumed, synthetic)."
+        },
+        "detection_radius_meters": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Effective detection range radius in meters if geometry is circular/buffer.",
+          "title": "Detection Radius Meters"
+        },
+        "azimuth_degrees": {
+          "anyOf": [
+            {
+              "maximum": 360.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Compass bearing angle of camera lens.",
+          "title": "Azimuth Degrees"
+        },
+        "field_of_view_degrees": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 360.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Horizontal sensor angle of view.",
+          "title": "Field Of View Degrees"
+        },
+        "valid_from": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Start of coverage interval.",
+          "title": "Valid From"
+        },
+        "valid_to": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "End of coverage interval.",
+          "title": "Valid To"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Documentation of coverage measurement or assumption.",
+          "title": "Provenance"
+        }
+      },
+      "required": [
+        "camera_id"
+      ],
+      "title": "CameraCoverage",
+      "type": "object"
+    },
+    "SpatialSourceType": {
+      "description": "Source and epistemic classification of spatial geometry.\nExplicitly distinguishes measured field data from model assumptions or scenarios.",
+      "enum": [
+        "measured",
+        "assumed",
+        "hypothetical",
+        "synthetic"
+      ],
+      "title": "SpatialSourceType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Request payload for monitoring blind spot analysis (Feature F08).",
+  "properties": {
+    "study_area_polygon": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "GeoJSON Polygon/MultiPolygon defining study area boundary.",
+      "title": "Study Area Polygon"
+    },
+    "camera_coverages": {
+      "description": "Explicit camera coverage polygons/assumptions. If omitted, uses cameras in snapshot.",
+      "items": {
+        "$ref": "#/$defs/CameraCoverage"
+      },
+      "title": "Camera Coverages",
+      "type": "array"
+    },
+    "coverage_inventory_complete": {
+      "default": false,
+      "description": "Whether coverage inventory is explicitly confirmed complete. When True and active cameras are 0, returns a valid complete-zero 100% gap.",
+      "title": "Coverage Inventory Complete",
+      "type": "boolean"
+    },
+    "crs": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": "EPSG:4326",
+      "description": "Expected Coordinate Reference System.",
+      "title": "Crs"
+    },
+    "default_coverage_radius_meters": {
+      "default": 50.0,
+      "description": "Default circular coverage radius in meters for cameras without explicit polygon.",
+      "exclusiveMinimum": 0.0,
+      "title": "Default Coverage Radius Meters",
+      "type": "number"
+    },
+    "camera_ids": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional subset of cameras to evaluate.",
+      "title": "Camera Ids"
+    },
+    "start_time": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional start of temporal evaluation window.",
+      "title": "Start Time"
+    },
+    "end_time": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional end of temporal evaluation window.",
+      "title": "End Time"
+    },
+    "expected_revision": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Expected snapshot dataset revision.",
+      "title": "Expected Revision"
+    },
+    "parameters": {
+      "additionalProperties": true,
+      "description": "Optional additional parameters.",
+      "title": "Parameters",
+      "type": "object"
+    }
+  },
+  "title": "BlindSpotAnalysisRequest",
+  "type": "object"
+}

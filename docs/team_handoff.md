@@ -1,28 +1,30 @@
-# WILDSCOPE Team Handoff — Phase 2, Phase 3 & Phase 4
+# WILDSCOPE Team Handoff — Phase 2, Phase 3, Phase 4 & Phase 5
 
 > **Prepared by:** Shravan (Analytics & Decision Intelligence Lead)
-> **Phase:** Phase 2 (Activity Analytics), Phase 3 (Review Prioritisation — F18), and Phase 4 (Cross-Camera Observation Correlation — F06)
-> **Status:** Complete. `analyze()`, `rank_review()`, and `find_cross_camera_associations()` are fully implemented and verified.
+> **Phase:** Phase 2 (Activity Analytics), Phase 3 (Review Prioritisation — F18), Phase 4 (Cross-Camera Observation Correlation — F06), and Phase 5 (Activity Anomaly Indicators — F12)
+> **Status:** Complete. `analyze()`, `rank_review()`, `find_cross_camera_associations()`, and `detect_activity_anomalies()` are fully implemented and verified.
 > **Schema version:** `1.3.0` (fully backward-compatible with `1.2.0`, `1.1.0` and `1.0.0`)
 > **Branch:** `shravan`
-> **Test Suite:** **202 passed, 1 skipped** (1 skipped case tests absent-file fallback; real 1,000-image dataset integration verified passing)
+> **Test Suite:** **246 passed, 1 skipped** (1 skipped case tests absent-file fallback; real 1,000-image dataset integration verified passing; all 27 Phase 5 tests passing)
 
 ---
 
 ## 0. Executive Summary of Implementation
 
-| Capability | Phase 1 Baseline | Phase 2 Analytics | Phase 3 Decision Intelligence | Phase 4 Cross-Camera Correlation (F06) |
-|---|---|---|---|---|
-| `analyze()` | `UNAVAILABLE` | **Fully implemented** (7 core metrics) | Extended with `reference_image_species_counts` and explicit encounter statuses | Extended with `cross_camera_associations` operation |
-| `rank_review()` | `UNAVAILABLE` | `UNAVAILABLE` (deferred) | **Fully implemented** (Feature F18: marginal sensitivity ranking) | Stable parity preserved |
-| `find_cross_camera_associations()` | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | **Fully implemented** (Feature F06: sliding-window encounter correlation) |
-| Schema Version | `1.0.0` | `1.1.0` | `1.2.0` | **`1.3.0`** (additive, backward-compatible) |
-| Data Source Modes | None | `operational_prediction` / `dataset_reference` | Enforced: operational only for `rank_review()` | Enforced: operational only for cross-camera correlation |
-| Encounter Capability | Implicit (`encounters == []`) | Inferred from presence | Explicit via `EncounterProcessingStatus` | Full lifecycle support (completed empty vs pending/unavailable) |
-| Category Mapping | Broad mapping | Documented CCT categories | Mapped categories | **Part B fix:** explicit non-animal for vehicles/people; unmapped wildlife visible |
-| Spatial Modes | None | None | None | `time_species_only`, `spatial_when_available`, `spatial_required` |
-| Clock Policies | Implicit | Zone-aware | Zone-aware | `documented_sync`, `analyst_assumption`, `offsets_known`, `unknown` |
-| Tests Passing | 38 | 117 passing | 166 passing (1 skipped) | **202 passing, 1 skipped** |
+| Capability | Phase 1 Baseline | Phase 2 Analytics | Phase 3 Decision Intelligence | Phase 4 Cross-Camera Correlation (F06) | Phase 5 Activity Anomaly Indicators (F12) |
+|---|---|---|---|---|---|
+| `analyze()` | `UNAVAILABLE` | **Fully implemented** (7 core metrics) | Extended with `reference_image_species_counts` and explicit encounter statuses | Extended with `cross_camera_associations` operation | Extended with `activity_anomaly` operation |
+| `rank_review()` | `UNAVAILABLE` | `UNAVAILABLE` (deferred) | **Fully implemented** (Feature F18: marginal sensitivity ranking) | Stable parity preserved | Stable parity preserved |
+| `find_cross_camera_associations()` | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | **Fully implemented** (Feature F06: sliding-window encounter correlation) | Stable parity preserved |
+| `detect_activity_anomalies()` | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | **Fully implemented** (Feature F12: robust MAD dispersion anomaly indicators) |
+| `normalize_snapshot_efforts()` | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | **Fully implemented** (Ingestion normalization for overlapping intervals) |
+| Schema Version | `1.0.0` | `1.1.0` | `1.2.0` | `1.3.0` | **`1.3.0`** (additive, backward-compatible) |
+| Data Source Modes | None | `operational_prediction` / `dataset_reference` | Enforced: operational only for `rank_review()` | Enforced: operational only for cross-camera correlation | Enforced: operational only (`UNAVAILABLE` on `dataset_reference`) |
+| Encounter Capability | Implicit (`encounters == []`) | Inferred from presence | Explicit via `EncounterProcessingStatus` | Full lifecycle support (completed empty vs pending/unavailable) | Full lifecycle support; valid 0 sightings distinct from missing effort |
+| Category Mapping | Broad mapping | Documented CCT categories | Mapped categories | Explicit non-animal for vehicles/people; unmapped wildlife visible | Same-species attribution with deduplication per encounter |
+| Spatial Modes | None | None | None | `time_species_only`, `spatial_when_available`, `spatial_required` | Per-camera stationarity audit telemetry check |
+| Clock / Timezone Policies | Implicit | Zone-aware | Zone-aware | `documented_sync`, `analyst_assumption`, `offsets_known`, `unknown` | Explicit calendar day binning under IANA timezone with DST physical duration accounting |
+| Tests Passing | 38 | 117 passing | 166 passing (1 skipped) | 219 passing (1 skipped) | **246 passing, 1 skipped** |
 
 ---
 
@@ -329,68 +331,228 @@ python -m pytest tests/test_phase2_analytics.py::TestCaltechRealDatasetIntegrati
 
 ---
 
-## 6. Runnable Verification Commands
+## 5. Phase 5: Activity Anomaly Indicators Engine (Feature F12)
+
+### 5.1 Purpose & Scientific Framing
+Feature F12 detects reviewable statistical anomalies in recorded wildlife encounter activity relative to an adequate historical baseline at individual camera traps.
+
+> [!IMPORTANT]
+> **Critical Interpretation:** Outputs are reviewable statistical indicators—not proof of population change, migration, poaching, camera failure, or ecological causes. Unmonitored intervals, weather, seasonality, and detection probability variation must be evaluated before drawing operational conclusions.
+
+### 5.2 Mathematical Formulation & Rules
+1. **Independent Series Scoping:**
+   - Multiple cameras and species are evaluated as independent, unpooled series $(cam_i, sp_j)$. Encounters are never merged across cameras.
+   - Baseline window: $[T_{\text{base\_start}}, T_{\text{base\_end}})$ (start-inclusive, end-exclusive).
+   - Evaluation window: $[T_{\text{eval\_start}}, T_{\text{eval\_end}})$ where $T_{\text{base\_end}} \le T_{\text{eval\_start}}$.
+2. **Calendar Day Binning, Monitoring Effort & Mid-Day Windows:**
+   - Evaluated under the declared `analysis_timezone` (IANA, e.g. `America/New_York` with physical UTC elapsed duration accounting).
+   - **Local Day Duration & DST Transitions:** Actual calendar-day duration $T_{D_k}$ is used (e.g. 23 hours = 82,800s on spring-forward DST days; 25 hours = 90,000s on fall-back DST days). 50% coverage corresponds to 11.5 hours on 23h days, 12h on standard days, and 12.5h on 25h days (correcting any assumption that 50% is always 12h).
+   - **Mid-Day Window Boundaries:** For windows starting or ending mid-day (e.g. 14:00), active monitoring seconds are measured within the window slice, but coverage ratio is evaluated relative to the **full local calendar day**. Boundary days with $<50\%$ of the full day monitored are excluded as unrepresentative.
+   - **Missing Days vs Valid Zeroes:** Unmonitored days ($E_k = 0$) are excluded from baseline calculations (never zero-filled). Monitored days with 0 encounters are valid zeroes ($R_k = 0.0$). Excluded bins do not contribute encounters to the baseline rate numerator.
+3. **Effort Overlap Reconciliation with Phase 1:**
+   - **Contract Enforcement:** Snapshots with overlapping effort intervals violate Phase 1 referential integrity and are rejected at the public entrypoint with `INVALID_REQUEST` (`ValidationErrorCode.OVERLAPPING_EFFORT`).
+   - **Documented Ingestion Normalization:** For raw logs, `normalize_snapshot_efforts(snapshot)` merges overlapping and contiguous intervals per camera into valid disjoint records prior to analysis.
+   - **Contiguous Intervals:** Adjacent intervals across records (e.g. $[0, 12]$ and $[12, 18]$) pass public validation natively and are unified without double-counting.
+4. **Robust Baseline Statistics:**
+   - Valid days count $M \ge \text{min\_baseline\_days}$ (default 7) and total active effort $\sum E_k \ge \text{min\_baseline\_active\_effort\_days}$ (default 5.0).
+   - Baseline Centre: $\tilde{R} = \text{median}(R_1, \dots, R_M)$.
+   - Robust Dispersion: $\text{MAD} = \text{median}(|R_k - \tilde{R}|)$.
+   - Normal-Consistent Scale: $\sigma_{\text{MAD}} = 1.4826 \times \text{MAD}$.
+   - **Dispersion Interpretation:** $\text{MAD} = 0$ indicates that at least 50% of the baseline values equal the median (e.g. in $[0, 0, 0, 0, 1, 2, 3]$, $\text{median}=0$, $\text{MAD}=0$, but values are not all identical). It does *not* prove that all baseline values are identical.
+5. **Two-Sided Anomaly Detection & Micro-Alert Prevention:**
+   - Evaluation rate: $R_{\text{eval}} = N_{\text{eval}} / E_{\text{eval}}$ (requires both $E_{\text{eval}} \ge \text{min\_evaluation\_active\_effort\_days}$ and $C_{\text{eval}} \ge \text{min\_day\_coverage\_ratio}$).
+   - Absolute rate change: $\Delta_{\text{abs}} = R_{\text{eval}} - \tilde{R}$.
+   - Relative rate change: $\Delta_{\text{rel}} = \Delta_{\text{abs}} / \tilde{R}$ (only if $\tilde{R} > 0$, avoiding division by zero).
+   - Anomaly score: $\text{score} = \Delta_{\text{abs}} / \sigma_{\text{MAD}}$ (only if $\sigma_{\text{MAD}} > 0$).
+   - **Two-Sided Thresholds:**
+     - `INCREASED`: $\text{score} \ge \theta_{\sigma}$ (default 3.0) AND $\Delta_{\text{abs}} \ge \delta_{\min}$ (default 0.2 encounters/day).
+     - `DECREASED`: $\text{score} \le -\theta_{\sigma}$ (default -3.0) AND $\Delta_{\text{abs}} \le -\delta_{\min}$ (default -0.2 encounters/day).
+     - `NO_INDICATOR`: Neither rule breached (does not prove ecological normalcy).
+     - `NOT_EVALUABLE`: History, evaluation effort, or coverage insufficient.
+   - **Two-Sided Zero Dispersion Fallback:** If $\text{MAD} = 0$, allows fallback classification using $\delta_{\min}$ in both directions:
+     - Increase fallback: $\Delta_{\text{abs}} \ge \delta_{\min} \to \text{INCREASED}$.
+     - Decrease fallback: $\Delta_{\text{abs}} \le -\delta_{\min} \to \text{DECREASED}$.
+   - **Exploratory Heuristic Nature:** Comparing an aggregate evaluation rate with daily baseline MAD is an exploratory heuristic (standardized deviation ratio), **not** a calibrated significance level, $p$-value, or probability of true biological change.
+6. **Comparability Assessment & Evaluability Policy:**
+   - **Absence of records:** Telemetry absence remains `UNASSESSED`.
+   - **Affirmative Scoped Provenance:** `VERIFIED_COMPARABLE` requires explicit telemetry (e.g. `camera.provenance` with `{"stationarity_verified": True, "verification_scope": "..."}`).
+   - **Physical Stationarity vs Full Analytical Comparability:** Hardware/mount verification confirms physical stationarity of the device, but does not guarantee full analytical comparability because environmental factors (vegetation growth, seasonality, micro-topography, weather) and upstream model/pipeline updates can alter detection probabilities over time.
+   - **Distinguishing Telemetry from Pipeline Provenance:** Separates physical camera changes (`repositioned`, `serviced`, `hardware_change`) from model version differences (`prediction_provenance:multiple_model_versions`) and grouping shifts.
+   - **Evaluability Policy:** Known repositioning, model, or deployment shifts mark the series as `NOT_EVALUABLE` under default policy, preventing false alerts across non-comparable historical baselines. Setting `allow_suspect_comparability=True` allows analyst override with mandatory `QUALIFIED_INDICATOR` warnings.
+7. **Phase 2 Parity:**
+   - Active camera-days and in-effort encounter counts match Phase 2 `compute_effort_normalised_rates` exactly for identical cameras and time windows.
+
+### 5.3 Team Handoff Notes
+- **Harsh (Detection & Grouping):** Phase 5 reuses existing encounter records and effective labels. When encounter grouping is `PENDING` or `FAILED`, returns clean `UNAVAILABLE`.
+- **Santosh (Backend & Telemetry):** Provide verified active effort records in `monitoring_efforts`. Source snapshots with overlapping intervals must be ingested via `normalize_snapshot_efforts(snapshot)`. Telemetry flags in `camera.provenance` (e.g. `{"repositioned": true}`) trigger `SUSPECT_OR_CHANGED` and mark the series `NOT_EVALUABLE` under default policy.
+- **Laasya (Frontend):** Use `detect_activity_anomalies()` or `analyze(snapshot, request)`. Render `BaselineDailyBin` for historical audit graphs, display anomaly scores alongside mandatory ecological caveats, and flag `QUALIFIED_INDICATOR` or `NOT_EVALUABLE` series with comparability badges.
+
+---
+
+## 6. Phase 6: Spatial Intelligence Engine (Features F08, F09, F14, F16)
+
+### 6.1 Purpose & Scientific Framing
+Phase 6 adds deterministic geometric spatial intelligence for camera trap arrays, protected reserves, and infrastructure corridors.
+
+> [!CRITICAL]
+> **Scientific & Interpretive Guardrails:**
+> 1. **No Animal Positions from Camera Sites:** Camera coordinates reflect physical mounting locations, NOT animal locations. Camera proximity indicators must NEVER be labeled as "animal geofence crossing".
+> 2. **No Wildlife Absence Claims:** Gap polygons reflect areas outside declared or assumed camera coverage, NOT field-validated wildlife absence or animal avoidance.
+> 3. **Non-Additivity of Candidate Placements:** Candidate ranks reflect single-site marginal coverage gain over the baseline. Marginal gains are NOT additive; placing multiple candidates simultaneously requires joint combinatorial evaluation.
+> 4. **Non-Causal Scenarios:** Infrastructure scenarios model geometric changes in viewsheds and proximity; they do NOT predict ecological impacts, movement route displacement, or population viability.
+> 5. **Missing Prerequisite Truthfulness:** Raw reference datasets (e.g. Caltech Camera Traps) do not provide GPS coordinates or study area boundaries. In their absence, operations return `ResponseStatus.UNAVAILABLE` with clear diagnostic warnings, without inventing synthetic coordinates.
+
+### 6.2 Coordinate Representation, Extents & Planar Projection
+- **Coordinate Conventions:** GeoJSON coordinate ordering is strictly `[longitude, latitude]` for Points, `[[lon, lat], ...]` for LineStrings, and `[[[lon, lat], ...], ...]` for Polygons.
+- **Strict Validation & Extents:**
+  - Rejects out-of-bounds coordinates ($lon \notin [-180, 180]$ or $lat \notin [-90, 90]$), non-finite floats (NaN, inf), unclosed rings, and self-intersecting bowtie polygons without silent repair.
+  - Rejects antimeridian crossings ($|\Delta \text{lon}| > 180^\circ$ between consecutive vertices); geometries must be pre-split.
+  - Rejects polar regions ($|\text{lat}| > 85^\circ$) due to extreme azimuthal distortion.
+  - Limits maximum study area extent span to $10.0^\circ$ ($\sim 1,110\text{ km}$), suitable for local reserve deployments.
+- **CRS Contracts:** Strictly accepts WGS84 (`"EPSG:4326"`, `"WGS84"`, `"urn:ogc:def:crs:OGC:1.3:CRS84"`). Unsupported CRS values are rejected with `ValidationErrorCode.UNSUPPORTED_CRS`. Projected metric coordinates are never validated against angular degree bounds.
+- **Planar Area & Distance Measurement:**
+  - Angular degrees are NEVER treated as linear meters or square meters.
+  - **Mathematical Model:** Uses spherical Lambert Azimuthal Equal-Area (LAEA) projection centered at the study area or target centroid ($R = 6,371,008.8\text{ m}$).
+  - **Edge Densification:** Long polygon or linestring edges in degree space exceeding $0.05^\circ$ ($\sim 5.5\text{ km}$) are automatically densified prior to projection via linear interpolation in longitude/latitude coordinate space. This samples intermediate vertices along coordinate lines (parallels and meridians). Because parallels (lines of constant latitude other than the equator) are small circles that project as curved arcs in LAEA, inserting intermediate points along coordinate lines prevents chord clipping without erroneously treating parallels as geodesics.
+  - **Accuracy & Numerical Precision Distinction:**
+    - *Numerical Roundtrip Error:* Double-precision IEEE 754 forward and inverse LAEA projection yields roundtrip floating-point error of $\sim 10^{-14}$ degrees (test guards $< 10^{-6}$ deg).
+    - *Conversion Units:* In geographic coordinates, $10^{-6}$ degrees latitude is $\approx 0.111\text{ metres}$ ($111\text{ mm}$), while longitude distance varies with latitude as $\approx 0.111 \cdot \cos(\text{lat})\text{ metres}$. It must never be confused with $0.1\text{ millimetres}$.
+    - *Spherical-Model Approximation:* The authalic reference sphere introduces $\le 0.5\%$ scale/area discrepancy relative to the WGS84 ellipsoid for local mid-latitude extents.
+    - *Benchmark Scoping:* Analytical spherical quad verification proves mathematical correctness on the reference sphere within $1.24 \times 10^{-8}$ relative error, but is not independent proof of WGS84 ellipsoidal measurement accuracy.
+    - *Field Measurement Accuracy:* Physical accuracy is bounded by GPS receiver field uncertainty ($3\text{--}15\text{ m}$) and declared sensor detection zones, not projection equation floating-point precision.
+
+### 6.3 Feature Specifications
+1. **Feature F08: Possible Monitoring Blind Spots:**
+   - Unified metric: `AnalysisMetric.MONITORING_BLIND_SPOTS`.
+   - Dedicated helper: `compute_monitoring_blind_spots(snapshot, request)`.
+   - Computes: `study_area_sq_meters`, `covered_area_sq_meters`, `uncovered_area_sq_meters`, `coverage_fraction`, and GeoJSON `gap_polygons`.
+   - Merges overlapping camera viewsheds without double-counting and clips coverage to study area boundary.
+   - **Coverage Inventory Completeness:**
+     - Absent coverage records without explicit completeness assertion $\to$ `ResponseStatus.INSUFFICIENT_DATA` (`result = None`).
+     - Partial inventory (some cameras missing coordinates) $\to$ `ResponseStatus.PARTIAL` (`is_coverage_complete = False`).
+     - Complete inventory confirming zero active cameras (`coverage_inventory_complete=True`) $\to$ `ResponseStatus.OK` (100% gap).
+     - Complete active inventory $\to$ `ResponseStatus.OK`.
+   - **Dated Geometry Applicability:** Camera coverages with `valid_from` / `valid_to` outside requested evaluation window are excluded with explicit reasons.
+2. **Feature F09: Candidate Camera Placement Ranking:**
+   - Unified metric: `AnalysisMetric.CANDIDATE_PLACEMENT`.
+   - Dedicated helper: `rank_candidate_placements(snapshot, request)`.
+   - Evaluates single-site marginal coverage gain $\Delta \text{Area}_k = \text{Area}((\text{Candidate}_k \cap \text{Study Area} \setminus \text{Exclusions}) \setminus \text{Baseline Coverage})$.
+   - **Separation of Excluded Candidates:**
+     - `ranked_candidates`: contains ONLY eligible candidates (`FEASIBLE` and `REDUNDANT`), ranked sequentially $1, 2, \dots$
+     - `excluded_candidates`: contains excluded candidates (e.g. falling inside exclusion zones) with `rank = None`.
+   - **Feasibility Semantics:** Zero-gain sites are classified as `REDUNDANT` (physically feasible to deploy, but redundant with existing baseline viewsheds).
+   - **Efficiency Scoring:** $\text{score} = \Delta \text{Area}_k / \text{cost}^{\text{cost\_weight}}$ (validating finite $\text{cost} > 0$ and $\text{cost\_weight} \ge 0$).
+   - Deterministic tie-breaking: `(status_priority, -score, -marginal_gain, cost, candidate_id)`.
+3. **Feature F14: Geofencing & Proximity Indicators:**
+   - Unified metric: `AnalysisMetric.PROXIMITY_INDICATORS`.
+   - Dedicated helper: `compute_proximity_indicators(snapshot, request)`.
+   - **Topological Relations & Uncertainty Propagation:**
+     - Zero uncertainty on boundary: point on boundary perimeter with $u = 0$ remains `BOUNDARY`.
+     - Positive uncertainty crossing boundary: uncertainty radius $u \ge \text{boundary\_distance}$ produces `INDETERMINATE`.
+     - Uncertainty crossing proximity threshold: when possible distance range $[\max(0, d-u), d+u]$ straddles threshold, `threshold_status = "uncertain"`.
+     - Polygon holes (interior rings): points inside donut holes are strictly `OUTSIDE` the region, with distance measured to the hole boundary.
+     - Uncertainty status: tracks whether uncertainty was `"assessed"` or `"unassessed"`.
+   - Descriptive labeling: Explicitly labels camera sites as physical mounting proximity indicators, never animal crossings.
+4. **Feature F16: Wildlife-Infrastructure Scenarios:**
+   - Unified metric: `AnalysisMetric.INFRASTRUCTURE_SCENARIO`.
+   - Dedicated helper: `evaluate_infrastructure_scenario(snapshot, request)`.
+   - Compares baseline camera coverage with hypothetical scenario features in an isolated, non-mutating manner.
+   - Computes before/after covered areas, coverage fractions, absolute delta ($m^2$), and relative change.
+   - Output flagged as `SpatialSourceType.HYPOTHETICAL` with non-causal caveats.
+
+### 6.4 Team Handoff Notes for Phase 6
+- **Harsh (Clustering & Observation Intelligence):** When providing modeled or estimated animal positions, populate `TargetLocation` with `position_type = PositionType.ESTIMATED_ANIMAL_POSITION` and explicit `uncertainty_radius_meters`. Never assign camera coordinates as exact animal locations.
+- **Santosh (Backend, GIS & Storage):**
+  - Use GeoJSON coordinate order `[longitude, latitude]` for all spatial zones, study boundaries, and candidate sites in `Snapshot.spatial_context`.
+  - Store exclusion zones with `zone_type = "exclusion_zone"` or `"inaccessible"`.
+  - Ensure all coordinates are finite numbers within WGS84 bounds.
+- **Laasya (Frontend & Map Visualizations):**
+  - Use `compute_monitoring_blind_spots()` to render unmonitored gap polygons on the map.
+  - Display the mandatory non-additivity warning on candidate placement queues:
+    *"Candidate ranks reflect single-site marginal coverage gain over baseline. Marginal gains are NOT additive."*
+  - For camera proximity cards, display the device placement indicator:
+    *"Reflects physical device placement; not an animal geofence crossing."*
+
+---
+
+## 7. Runnable Verification Commands
 
 ```powershell
-# 1. Run complete test suite (203 tests)
-python -m pytest tests/ -v
+# 1. Run complete test suite (277 tests: 276 passed, 1 skipped)
+python -m pytest tests/ -v -rs
 
-# 2. Run Phase 4 association test suite specifically
+# 2. Run Phase 6 spatial test suite specifically (30 tests)
+python -m pytest tests/test_phase6_spatial.py -v
+
+# 3. Run Phase 5 anomaly indicators test suite (27 tests)
+python -m pytest tests/test_phase5_anomalies.py -v
+
+# 4. Run Phase 4 association test suite (24 tests)
 python -m pytest tests/test_phase4_associations.py -v
 
-# 3. Regenerate all JSON Schemas in schemas/
+# 5. Run Caltech real dataset integration test
+python -m pytest tests/test_phase2_analytics.py -k real_dataset_integration -v -s -rs
+
+# 6. Regenerate all 18 JSON Schemas in schemas/
 python -m wildscope_analytics.schema_generator
 
-# 4. Verify unified analyze() with explicit clock_comparability_policy in interactive Python
+# 5. Run Caltech real dataset integration test
+python -m pytest tests/test_phase2_analytics.py -k real_dataset_integration -v -s -rs
+
+# 6. Regenerate all 18 JSON Schemas in schemas/
+python -m wildscope_analytics.schema_generator
+
+# 7. Verify unified analyze() with MONITORING_BLIND_SPOTS in interactive Python
 python -c "
+from pathlib import Path
 from wildscope_analytics import Snapshot, load_and_validate_snapshot, analyze, AnalysisRequest, AnalysisMetric
-snap, _ = load_and_validate_snapshot('examples/valid_snapshot.json')
+snap, _ = load_and_validate_snapshot(Path('examples/valid_snapshot.json'))
+study_area = {
+    'type': 'Polygon',
+    'coordinates': [[[-118.0, 34.0], [-118.0, 34.02], [-117.98, 34.02], [-117.98, 34.0], [-118.0, 34.0]]]
+}
 req = AnalysisRequest(
-    metric=AnalysisMetric.CROSS_CAMERA_ASSOCIATIONS,
-    parameters={
-        'clock_comparability_policy': 'analyst_assumption',
-        'max_temporal_separation_seconds': 3600.0,
-        'spatial_mode': 'time_species_only',
-    }
+    metric=AnalysisMetric.MONITORING_BLIND_SPOTS,
+    parameters={'study_area_polygon': study_area}
 )
 resp = analyze(snap, req)
-print('Unified Status:', resp.status)
-print('Matching pairs:', resp.result['total_matching_pairs_found'])
-"
-
-# 5. Verify dedicated find_cross_camera_associations() in interactive Python
-python -c "
-from wildscope_analytics import load_and_validate_snapshot, find_cross_camera_associations, CrossCameraAssociationRequest
-snap, _ = load_and_validate_snapshot('examples/valid_snapshot.json')
-req = CrossCameraAssociationRequest()
-resp = find_cross_camera_associations(snap, req)
-print('Dedicated Status:', resp.status)
-print('Matching pairs:', resp.result['total_matching_pairs_found'])
+print('Unified Blind Spots Status:', resp.status)
+if resp.result:
+    print('Study Area (m^2):', resp.result.study_area_sq_meters)
+    print('Coverage Fraction:', resp.result.coverage_fraction)
 "
 ```
 
 ---
 
-## 7. Complete Artifact & Schema Inventory
+## 8. Complete Artifact & Schema Inventory
 
-### Schemas Generated (`schemas/`):
+### Schemas Generated (`schemas/`, 18 total):
 - `snapshot.schema.json` (Schema v1.3.0)
 - `analysis_request.schema.json`
 - `cross_camera_association_request.schema.json`
 - `review_ranking_request.schema.json`
+- `activity_anomaly_request.schema.json`
+- `activity_anomalies_result.schema.json`
 - `analysis_response.schema.json`
 - `cross_camera_associations_result.schema.json`
 - `dataset_reference_annotation.schema.json`
 - `review_ranking_result.schema.json`
+- `blind_spot_analysis_request.schema.json`
+- `blind_spot_result.schema.json`
+- `candidate_placement_request.schema.json`
+- `candidate_placement_result.schema.json`
+- `proximity_analysis_request.schema.json`
+- `proximity_result.schema.json`
+- `infrastructure_scenario_request.schema.json`
+- `infrastructure_scenario_result.schema.json`
 
 ### Code Modules:
-- `wildscope_analytics/contracts/`: Data contracts, Pydantic models, request/response models.
-- `wildscope_analytics/analytics.py`: Effective-label resolver, encounter capability dispatcher, 8 activity metrics.
+- `wildscope_analytics/contracts/`: Data contracts, Pydantic models, spatial entity contracts, request/response models.
+- `wildscope_analytics/spatial.py`: Geospatial geometry engine, LAEA projection, blind spots (F08), candidate placement (F09), geofencing (F14), infrastructure scenarios (F16).
+- `wildscope_analytics/analytics.py`: Unified `analyze()` dispatcher, dedicated helper entry points, 13 activity & spatial metrics.
+- `wildscope_analytics/anomalies.py`: Activity anomaly detection engine (Feature F12).
 - `wildscope_analytics/ranking.py`: Conclusion-sensitive review ranking engine (Feature F18).
 - `wildscope_analytics/associations.py`: Cross-camera observation correlation engine (Feature F06).
-- `wildscope_analytics/caltech_adapter.py`: Ground-truth dataset importer.
-- `wildscope_analytics/validation.py`: Snapshot referential integrity and schema validator.
-- `wildscope_analytics/analytics.py`: Effective-label resolver, encounter capability dispatcher, 8 activity metrics.
-- `wildscope_analytics/ranking.py`: Conclusion-sensitive review ranking engine (isolated counterfactual simulation, encounter deduplication, dynamic explanations).
 - `wildscope_analytics/caltech_adapter.py`: Ground-truth dataset importer.
 - `wildscope_analytics/validation.py`: Snapshot referential integrity and schema validator.

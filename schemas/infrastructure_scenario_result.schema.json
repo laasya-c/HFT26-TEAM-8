@@ -1,0 +1,125 @@
+{
+  "$defs": {
+    "SpatialSourceType": {
+      "description": "Source and epistemic classification of spatial geometry.\nExplicitly distinguishes measured field data from model assumptions or scenarios.",
+      "enum": [
+        "measured",
+        "assumed",
+        "hypothetical",
+        "synthetic"
+      ],
+      "title": "SpatialSourceType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Complete typed payload for wildlife-infrastructure scenario analysis (Feature F16).",
+  "properties": {
+    "scenario_id": {
+      "description": "Unique scenario identifier.",
+      "title": "Scenario Id",
+      "type": "string"
+    },
+    "scenario_name": {
+      "description": "Descriptive scenario name.",
+      "title": "Scenario Name",
+      "type": "string"
+    },
+    "projection_method": {
+      "description": "Projection or distance measurement method.",
+      "title": "Projection Method",
+      "type": "string"
+    },
+    "source_classification": {
+      "$ref": "#/$defs/SpatialSourceType",
+      "default": "hypothetical",
+      "description": "Classification of scenario features."
+    },
+    "study_area_sq_meters": {
+      "description": "Study area in square meters.",
+      "minimum": 0.0,
+      "title": "Study Area Sq Meters",
+      "type": "number"
+    },
+    "baseline_covered_sq_meters": {
+      "description": "Baseline covered area in square meters.",
+      "minimum": 0.0,
+      "title": "Baseline Covered Sq Meters",
+      "type": "number"
+    },
+    "baseline_coverage_fraction": {
+      "description": "Baseline coverage fraction [0.0, 1.0].",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Baseline Coverage Fraction",
+      "type": "number"
+    },
+    "scenario_covered_sq_meters": {
+      "description": "Scenario covered area in square meters.",
+      "minimum": 0.0,
+      "title": "Scenario Covered Sq Meters",
+      "type": "number"
+    },
+    "scenario_coverage_fraction": {
+      "description": "Scenario coverage fraction [0.0, 1.0].",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Scenario Coverage Fraction",
+      "type": "number"
+    },
+    "absolute_change_sq_meters": {
+      "description": "Absolute change in covered area (scenario - baseline) in m^2.",
+      "title": "Absolute Change Sq Meters",
+      "type": "number"
+    },
+    "relative_change_fraction": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Relative change in coverage fraction ((scen - base) / base).",
+      "title": "Relative Change Fraction"
+    },
+    "hypothetical_features_applied": {
+      "description": "Summary of hypothetical features applied in scenario.",
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Hypothetical Features Applied",
+      "type": "array"
+    },
+    "assumptions": {
+      "description": "Explicit scenario assumptions.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Assumptions",
+      "type": "array"
+    },
+    "disclaimer": {
+      "default": "Hypothetical scenario analysis only. Evaluates geometric coverage and proximity changes under explicit assumptions. Does not predict ecological impacts, animal movement route displacement, or population viability changes.",
+      "description": "Mandatory scientific disclaimer.",
+      "title": "Disclaimer",
+      "type": "string"
+    }
+  },
+  "required": [
+    "scenario_id",
+    "scenario_name",
+    "projection_method",
+    "study_area_sq_meters",
+    "baseline_covered_sq_meters",
+    "baseline_coverage_fraction",
+    "scenario_covered_sq_meters",
+    "scenario_coverage_fraction",
+    "absolute_change_sq_meters"
+  ],
+  "title": "InfrastructureScenarioResult",
+  "type": "object"
+}

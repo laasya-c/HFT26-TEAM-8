@@ -21,13 +21,23 @@ if str(REPO_ROOT) not in sys.path:
 
 from wildscope_analytics.contracts.entities import DatasetReferenceAnnotation
 from wildscope_analytics.contracts.requests import (
+    ActivityAnomalyRequest,
     AnalysisRequest,
+    BlindSpotAnalysisRequest,
+    CandidatePlacementRequest,
     CrossCameraAssociationRequest,
+    InfrastructureScenarioRequest,
+    ProximityAnalysisRequest,
     ReviewRankingRequest,
 )
 from wildscope_analytics.contracts.responses import (
+    ActivityAnomaliesResult,
     AnalysisResponseEnvelope,
+    BlindSpotResult,
+    CandidatePlacementResult,
     CrossCameraAssociationsResult,
+    InfrastructureScenarioResult,
+    ProximityResult,
     ReviewRankingResult,
 )
 from wildscope_analytics.contracts.snapshot import Snapshot
@@ -49,8 +59,18 @@ def export_schemas(output_dir: Path | str | None = None) -> list[Path]:
         ("review_ranking_request.schema.json", ReviewRankingRequest),
         ("analysis_response.schema.json", AnalysisResponseEnvelope),
         ("cross_camera_associations_result.schema.json", CrossCameraAssociationsResult),
+        ("activity_anomaly_request.schema.json", ActivityAnomalyRequest),
+        ("activity_anomalies_result.schema.json", ActivityAnomaliesResult),
         ("dataset_reference_annotation.schema.json", DatasetReferenceAnnotation),
         ("review_ranking_result.schema.json", ReviewRankingResult),
+        ("blind_spot_analysis_request.schema.json", BlindSpotAnalysisRequest),
+        ("blind_spot_result.schema.json", BlindSpotResult),
+        ("candidate_placement_request.schema.json", CandidatePlacementRequest),
+        ("candidate_placement_result.schema.json", CandidatePlacementResult),
+        ("proximity_analysis_request.schema.json", ProximityAnalysisRequest),
+        ("proximity_result.schema.json", ProximityResult),
+        ("infrastructure_scenario_request.schema.json", InfrastructureScenarioRequest),
+        ("infrastructure_scenario_result.schema.json", InfrastructureScenarioResult),
     ]
 
     exported_paths = []

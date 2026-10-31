@@ -100,6 +100,17 @@ class AnalysisMetric(StrEnum):
     EFFORT_NORMALISED_RATES = "effort_normalised_rates"
     # Phase 4 additions:
     CROSS_CAMERA_ASSOCIATIONS = "cross_camera_associations"
+    # Phase 5 additions:
+    ACTIVITY_ANOMALY = "activity_anomaly"
+    ACTIVITY_ANOMALIES = "activity_anomalies"
+    # Phase 6 additions:
+    MONITORING_BLIND_SPOTS = "monitoring_blind_spots"
+    CANDIDATE_PLACEMENT = "candidate_placement"
+    CANDIDATE_CAMERA_PLACEMENT = "candidate_camera_placement"
+    PROXIMITY_INDICATORS = "proximity_indicators"
+    GEOFENCING_PROXIMITY = "geofencing_proximity"
+    INFRASTRUCTURE_SCENARIO = "infrastructure_scenario"
+    WILDLIFE_INFRASTRUCTURE_SCENARIOS = "wildlife_infrastructure_scenarios"
     # Phase 1 legacy names kept for backward compatibility
     ACTIVITY_TIME_DISTRIBUTION = "activity_time_distribution"
     CROSS_CAMERA_ASSOCIATION = "cross_camera_association"
@@ -146,6 +157,32 @@ class TemporalRelation(StrEnum):
     """Temporal interval relationship between two encounters."""
     OVERLAPPING = "overlapping"
     DISJOINT = "disjoint"
+
+
+class AnomalyOutcome(StrEnum):
+    """
+    Outcome of an activity anomaly evaluation on a camera/species series (Phase 5, Feature F12).
+    - INCREASED: Evaluation encounter rate exceeded baseline dispersion and absolute threshold.
+    - DECREASED: Evaluation encounter rate dropped below baseline dispersion and absolute threshold.
+    - NO_INDICATOR: No configured anomaly rule triggered (does NOT prove ecological normalcy).
+    - NOT_EVALUABLE: History, active effort, or coverage was insufficient to evaluate.
+    """
+    INCREASED = "increased"
+    DECREASED = "decreased"
+    NO_INDICATOR = "no_indicator"
+    NOT_EVALUABLE = "not_evaluable"
+
+
+class ComparabilityAssessment(StrEnum):
+    """
+    Operational stationarity assessment between baseline and evaluation periods.
+    - VERIFIED_COMPARABLE: Verified that deployment, camera, and model remained stationary.
+    - UNASSESSED: Stationarity unassessed due to missing deployment audit metadata.
+    - SUSPECT_OR_CHANGED: Known repositioning, hardware change, or pipeline version difference detected.
+    """
+    VERIFIED_COMPARABLE = "verified_comparable"
+    UNASSESSED = "unassessed"
+    SUSPECT_OR_CHANGED = "suspect_or_changed"
 
 
 class InclusionPolicy(StrEnum):
@@ -229,3 +266,47 @@ class ValidationErrorCode(StrEnum):
     DATASET_SOURCE_MISMATCH = "DATASET_SOURCE_MISMATCH"
     MISSING_ENCOUNTER_SUPPORT = "MISSING_ENCOUNTER_SUPPORT"
     INVALID_RANKING_TARGET = "INVALID_RANKING_TARGET"
+    # Phase 6 additions
+    INVALID_GEOMETRY = "INVALID_GEOMETRY"
+    UNSUPPORTED_CRS = "UNSUPPORTED_CRS"
+    MISSING_SPATIAL_DATA = "MISSING_SPATIAL_DATA"
+
+
+class SpatialSourceType(StrEnum):
+    """
+    Source and epistemic classification of spatial geometry.
+    Explicitly distinguishes measured field data from model assumptions or scenarios.
+    """
+    MEASURED = "measured"          # Empirically measured in the field (e.g. DGPS boundary survey)
+    ASSUMED = "assumed"            # Operational model assumption (e.g. nominal 50m detection buffer)
+    HYPOTHETICAL = "hypothetical"  # What-if planning scenario feature
+    SYNTHETIC = "synthetic"        # Synthetic benchmark or test fixture geometry
+
+
+class PositionType(StrEnum):
+    """
+    Nature of spatial position coordinates being evaluated.
+    Maintains rigorous distinction between fixed camera sites and estimated animal locations.
+    """
+    CAMERA_SITE = "camera_site"                            # Fixed physical camera deployment location
+    ESTIMATED_ANIMAL_POSITION = "estimated_animal_position"  # Modeled/estimated animal coordinate
+    OBSERVATION_LOCATION = "observation_location"            # Associated sensor or field observation point
+
+
+class ProximityRelation(StrEnum):
+    """
+    Topological relationship between a point and a spatial region/boundary.
+    """
+    INSIDE = "inside"                # Point strictly inside zone boundary
+    OUTSIDE = "outside"              # Point strictly outside zone boundary
+    BOUNDARY = "boundary"            # Point intersects zone boundary within tolerance
+    INDETERMINATE = "indeterminate"  # Positional uncertainty radius overlaps zone boundary
+
+
+class CandidatePlacementStatus(StrEnum):
+    """
+    Status of candidate camera deployment site.
+    """
+    FEASIBLE = "feasible"            # Site is valid and outside exclusion zones
+    EXCLUDED = "excluded"            # Site falls within declared exclusion zone
+    REDUNDANT = "redundant"          # Site provides zero marginal coverage gain

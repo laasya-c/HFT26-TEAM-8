@@ -53,8 +53,13 @@ from wildscope_analytics.contracts.enums import (
     ValidationErrorCode,
 )
 from wildscope_analytics.contracts.requests import (
+    ActivityAnomalyRequest,
     AnalysisRequest,
+    BlindSpotAnalysisRequest,
+    CandidatePlacementRequest,
     CrossCameraAssociationRequest,
+    InfrastructureScenarioRequest,
+    ProximityAnalysisRequest,
     ReviewRankingRequest,
 )
 from wildscope_analytics.contracts.responses import AnalysisResponseEnvelope, ValidationErrorDetail
@@ -1621,23 +1626,96 @@ _LEGACY_METRIC_MAP: dict[str, AnalysisMetric] = {
 
 def analyze(
     snapshot: Snapshot,
-    request: AnalysisRequest | CrossCameraAssociationRequest,
+    request: (
+        AnalysisRequest
+        | CrossCameraAssociationRequest
+        | ActivityAnomalyRequest
+        | BlindSpotAnalysisRequest
+        | CandidatePlacementRequest
+        | ProximityAnalysisRequest
+        | InfrastructureScenarioRequest
+    ),
 ) -> AnalysisResponseEnvelope:
     """
-    Main analytical entry point for WILDSCOPE (Phase 2 & Phase 4).
+    Main analytical entry point for WILDSCOPE (Phases 2, 4, 5, 6).
     Validates the snapshot, resolves effective labels, applies filters,
     and dispatches to the requested metric computation.
 
     Supported metrics:
       overview, species_encounter_counts, reference_image_species_counts,
       camera_comparison, daily_activity, hourly_activity, species_camera_matrix,
-      effort_normalised_rates, cross_camera_associations (Feature F06)
+      effort_normalised_rates, cross_camera_associations (Feature F06),
+      activity_anomaly (Feature F12),
+      monitoring_blind_spots (Feature F08),
+      candidate_placement (Feature F09),
+      proximity_indicators (Feature F14),
+      infrastructure_scenario (Feature F16).
 
     Returns AnalysisResponseEnvelope with typed result payload.
     """
+    if isinstance(request, dict):
+        metric_val = request.get("metric")
+        if isinstance(metric_val, AnalysisMetric):
+            metric_val = metric_val.value
+        if metric_val in (AnalysisMetric.ACTIVITY_ANOMALY.value, AnalysisMetric.ACTIVITY_ANOMALIES.value, "activity_anomaly", "activity_anomalies"):
+            from wildscope_analytics.anomalies import compute_activity_anomalies
+            return compute_activity_anomalies(snapshot, request)
+        if metric_val in (AnalysisMetric.CROSS_CAMERA_ASSOCIATIONS.value, AnalysisMetric.CROSS_CAMERA_ASSOCIATION.value, "cross_camera_associations", "cross_camera_association"):
+            from wildscope_analytics.associations import compute_cross_camera_associations
+            return compute_cross_camera_associations(snapshot, request)
+        if metric_val in (AnalysisMetric.MONITORING_BLIND_SPOTS.value, AnalysisMetric.MONITORING_COVERAGE_SUMMARY.value, "monitoring_blind_spots", "monitoring_coverage_summary"):
+            from wildscope_analytics.spatial import compute_monitoring_blind_spots
+            return compute_monitoring_blind_spots(snapshot, request)
+        if metric_val in (AnalysisMetric.CANDIDATE_PLACEMENT.value, AnalysisMetric.CANDIDATE_CAMERA_PLACEMENT.value, "candidate_placement", "candidate_camera_placement"):
+            from wildscope_analytics.spatial import rank_candidate_placements
+            return rank_candidate_placements(snapshot, request)
+        if metric_val in (AnalysisMetric.PROXIMITY_INDICATORS.value, AnalysisMetric.GEOFENCING_PROXIMITY.value, "proximity_indicators", "geofencing_proximity"):
+            from wildscope_analytics.spatial import compute_proximity_indicators
+            return compute_proximity_indicators(snapshot, request)
+        if metric_val in (AnalysisMetric.INFRASTRUCTURE_SCENARIO.value, AnalysisMetric.WILDLIFE_INFRASTRUCTURE_SCENARIOS.value, "infrastructure_scenario", "wildlife_infrastructure_scenarios"):
+            from wildscope_analytics.spatial import evaluate_infrastructure_scenario
+            return evaluate_infrastructure_scenario(snapshot, request)
+        try:
+            request = AnalysisRequest(**request)
+        except Exception as exc:
+            return AnalysisResponseEnvelope(
+                status=ResponseStatus.INVALID_REQUEST,
+                schema_version=CURRENT_SCHEMA_VERSION,
+                dataset_revision=snapshot.metadata.dataset_revision,
+                metric=AnalysisMetric.OVERVIEW,
+                errors=[
+                    ValidationErrorDetail(
+                        code=ValidationErrorCode.SCHEMA_VIOLATION,
+                        message=str(exc),
+                        field_path="request",
+                    )
+                ],
+                limitations=["Request dict failed schema validation."],
+            )
+
+    if isinstance(request, ActivityAnomalyRequest):
+        from wildscope_analytics.anomalies import compute_activity_anomalies
+        return compute_activity_anomalies(snapshot, request)
+
     if isinstance(request, CrossCameraAssociationRequest):
         from wildscope_analytics.associations import compute_cross_camera_associations
         return compute_cross_camera_associations(snapshot, request)
+
+    if isinstance(request, BlindSpotAnalysisRequest):
+        from wildscope_analytics.spatial import compute_monitoring_blind_spots
+        return compute_monitoring_blind_spots(snapshot, request)
+
+    if isinstance(request, CandidatePlacementRequest):
+        from wildscope_analytics.spatial import rank_candidate_placements
+        return rank_candidate_placements(snapshot, request)
+
+    if isinstance(request, ProximityAnalysisRequest):
+        from wildscope_analytics.spatial import compute_proximity_indicators
+        return compute_proximity_indicators(snapshot, request)
+
+    if isinstance(request, InfrastructureScenarioRequest):
+        from wildscope_analytics.spatial import evaluate_infrastructure_scenario
+        return evaluate_infrastructure_scenario(snapshot, request)
 
     # --- Validate snapshot
     snap_report = validate_snapshot_data(snapshot)
@@ -1716,6 +1794,21 @@ def analyze(
     if metric in (AnalysisMetric.CROSS_CAMERA_ASSOCIATIONS, AnalysisMetric.CROSS_CAMERA_ASSOCIATION):
         from wildscope_analytics.associations import compute_cross_camera_associations
         return compute_cross_camera_associations(snapshot, request)
+    if metric in (AnalysisMetric.ACTIVITY_ANOMALY, AnalysisMetric.ACTIVITY_ANOMALIES):
+        from wildscope_analytics.anomalies import compute_activity_anomalies
+        return compute_activity_anomalies(snapshot, request)
+    if metric in (AnalysisMetric.MONITORING_BLIND_SPOTS, AnalysisMetric.MONITORING_COVERAGE_SUMMARY):
+        from wildscope_analytics.spatial import compute_monitoring_blind_spots
+        return compute_monitoring_blind_spots(snapshot, request)
+    if metric in (AnalysisMetric.CANDIDATE_PLACEMENT, AnalysisMetric.CANDIDATE_CAMERA_PLACEMENT):
+        from wildscope_analytics.spatial import rank_candidate_placements
+        return rank_candidate_placements(snapshot, request)
+    if metric in (AnalysisMetric.PROXIMITY_INDICATORS, AnalysisMetric.GEOFENCING_PROXIMITY):
+        from wildscope_analytics.spatial import compute_proximity_indicators
+        return compute_proximity_indicators(snapshot, request)
+    if metric in (AnalysisMetric.INFRASTRUCTURE_SCENARIO, AnalysisMetric.WILDLIFE_INFRASTRUCTURE_SCENARIOS):
+        from wildscope_analytics.spatial import evaluate_infrastructure_scenario
+        return evaluate_infrastructure_scenario(snapshot, request)
 
     # Unimplemented metric
     return AnalysisResponseEnvelope(
@@ -1726,6 +1819,18 @@ def analyze(
         applied_filters=_build_applied_filters(request),
         limitations=[f"Metric '{request.metric.value}' is not implemented."],
     )
+
+
+def detect_activity_anomalies(
+    snapshot: Snapshot,
+    request: ActivityAnomalyRequest | AnalysisRequest,
+) -> AnalysisResponseEnvelope:
+    """
+    Phase 5: Dedicated entry point for activity anomaly indicators (Feature F12).
+    Evaluates independent camera/species series encounter rates against historical baseline.
+    """
+    from wildscope_analytics.anomalies import compute_activity_anomalies
+    return compute_activity_anomalies(snapshot, request)
 
 
 def find_cross_camera_associations(
@@ -1751,3 +1856,51 @@ def rank_review(
     """
     from wildscope_analytics.ranking import compute_review_ranking
     return compute_review_ranking(snapshot, request)
+
+
+def compute_monitoring_blind_spots(
+    snapshot: Snapshot,
+    request: BlindSpotAnalysisRequest | AnalysisRequest,
+) -> AnalysisResponseEnvelope:
+    """
+    Phase 6: Dedicated entry point for monitoring blind spot analysis (Feature F08).
+    Evaluates monitoring coverage and uncovered gap polygons within a study area.
+    """
+    from wildscope_analytics.spatial import compute_monitoring_blind_spots as _compute
+    return _compute(snapshot, request)
+
+
+def rank_candidate_placements(
+    snapshot: Snapshot,
+    request: CandidatePlacementRequest | AnalysisRequest,
+) -> AnalysisResponseEnvelope:
+    """
+    Phase 6: Dedicated entry point for candidate camera placement ranking (Feature F09).
+    Evaluates marginal coverage gains and ranks candidate sites over baseline.
+    """
+    from wildscope_analytics.spatial import rank_candidate_placements as _rank
+    return _rank(snapshot, request)
+
+
+def compute_proximity_indicators(
+    snapshot: Snapshot,
+    request: ProximityAnalysisRequest | AnalysisRequest,
+) -> AnalysisResponseEnvelope:
+    """
+    Phase 6: Dedicated entry point for geofencing and proximity indicators (Feature F14).
+    Evaluates geometric distance and topological relations to zones or infrastructure.
+    """
+    from wildscope_analytics.spatial import compute_proximity_indicators as _prox
+    return _prox(snapshot, request)
+
+
+def evaluate_infrastructure_scenario(
+    snapshot: Snapshot,
+    request: InfrastructureScenarioRequest | AnalysisRequest,
+) -> AnalysisResponseEnvelope:
+    """
+    Phase 6: Dedicated entry point for wildlife-infrastructure scenario analysis (Feature F16).
+    Evaluates hypothetical features (roads, buffers, cameras) against baseline coverage.
+    """
+    from wildscope_analytics.spatial import evaluate_infrastructure_scenario as _scen
+    return _scen(snapshot, request)

@@ -1,0 +1,208 @@
+{
+  "$defs": {
+    "CandidatePlacementItem": {
+      "additionalProperties": false,
+      "description": "Single ranked candidate placement site evaluation (Feature F09).",
+      "properties": {
+        "candidate_id": {
+          "description": "Unique candidate site ID.",
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "rank": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Priority rank (1 = highest marginal benefit), None if excluded.",
+          "title": "Rank"
+        },
+        "status": {
+          "$ref": "#/$defs/CandidatePlacementStatus",
+          "description": "Feasibility status (feasible, excluded, redundant)."
+        },
+        "marginal_coverage_gain_sq_meters": {
+          "description": "Marginal unmonitored area gained in m^2.",
+          "minimum": 0.0,
+          "title": "Marginal Coverage Gain Sq Meters",
+          "type": "number"
+        },
+        "marginal_coverage_gain_sq_km": {
+          "description": "Marginal unmonitored area gained in km^2.",
+          "minimum": 0.0,
+          "title": "Marginal Coverage Gain Sq Km",
+          "type": "number"
+        },
+        "score": {
+          "description": "Efficiency score (marginal gain / cost).",
+          "minimum": 0.0,
+          "title": "Score",
+          "type": "number"
+        },
+        "cost": {
+          "description": "Deployment cost weight.",
+          "exclusiveMinimum": 0.0,
+          "title": "Cost",
+          "type": "number"
+        },
+        "overlap_with_baseline_sq_meters": {
+          "description": "Overlap area with existing baseline coverage in m^2.",
+          "minimum": 0.0,
+          "title": "Overlap With Baseline Sq Meters",
+          "type": "number"
+        },
+        "is_in_exclusion_zone": {
+          "default": false,
+          "description": "Whether candidate site falls in an exclusion zone.",
+          "title": "Is In Exclusion Zone",
+          "type": "boolean"
+        },
+        "exclusion_reasons": {
+          "description": "Reasons for exclusion if applicable.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclusion Reasons",
+          "type": "array"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Contextual evaluation notes.",
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "status",
+        "marginal_coverage_gain_sq_meters",
+        "marginal_coverage_gain_sq_km",
+        "score",
+        "cost",
+        "overlap_with_baseline_sq_meters"
+      ],
+      "title": "CandidatePlacementItem",
+      "type": "object"
+    },
+    "CandidatePlacementStatus": {
+      "description": "Status of candidate camera deployment site.",
+      "enum": [
+        "feasible",
+        "excluded",
+        "redundant"
+      ],
+      "title": "CandidatePlacementStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Complete typed payload for candidate camera placement ranking (Feature F09).",
+  "properties": {
+    "data_source_mode": {
+      "description": "Snapshot data source mode.",
+      "title": "Data Source Mode",
+      "type": "string"
+    },
+    "metric": {
+      "default": "candidate_placement",
+      "description": "Operational metric identifier.",
+      "title": "Metric",
+      "type": "string"
+    },
+    "projection_method": {
+      "description": "Geodesic or projection method used for planar area.",
+      "title": "Projection Method",
+      "type": "string"
+    },
+    "study_area_sq_meters": {
+      "description": "Total study area in square meters.",
+      "minimum": 0.0,
+      "title": "Study Area Sq Meters",
+      "type": "number"
+    },
+    "baseline_covered_area_sq_meters": {
+      "description": "Existing baseline coverage in m^2.",
+      "minimum": 0.0,
+      "title": "Baseline Covered Area Sq Meters",
+      "type": "number"
+    },
+    "baseline_coverage_fraction": {
+      "description": "Baseline coverage fraction [0.0, 1.0].",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Baseline Coverage Fraction",
+      "type": "number"
+    },
+    "ranked_candidates": {
+      "description": "Ranked eligible candidate camera placement sites.",
+      "items": {
+        "$ref": "#/$defs/CandidatePlacementItem"
+      },
+      "title": "Ranked Candidates",
+      "type": "array"
+    },
+    "excluded_candidates": {
+      "description": "Excluded candidate camera placement sites (e.g. falling inside exclusion zones).",
+      "items": {
+        "$ref": "#/$defs/CandidatePlacementItem"
+      },
+      "title": "Excluded Candidates",
+      "type": "array"
+    },
+    "total_candidates": {
+      "description": "Total candidate sites evaluated.",
+      "minimum": 0,
+      "title": "Total Candidates",
+      "type": "integer"
+    },
+    "feasible_candidates_count": {
+      "description": "Count of feasible candidates.",
+      "minimum": 0,
+      "title": "Feasible Candidates Count",
+      "type": "integer"
+    },
+    "excluded_candidates_count": {
+      "description": "Count of excluded candidates.",
+      "minimum": 0,
+      "title": "Excluded Candidates Count",
+      "type": "integer"
+    },
+    "marginal_analysis_disclaimer": {
+      "default": "Candidate ranks reflect single-site marginal coverage gain over the baseline. Marginal gains are NOT additive; placing multiple candidates simultaneously requires joint combinatorial evaluation as candidate viewsheds may overlap.",
+      "description": "Mandatory non-additivity disclaimer.",
+      "title": "Marginal Analysis Disclaimer",
+      "type": "string"
+    },
+    "disclaimer": {
+      "default": "Candidate camera placement ranking is a decision-support tool based on declared spatial assumptions. It does not guarantee optimal field detection probability, animal visibility, terrain accessibility, or equipment security.",
+      "description": "Mandatory scientific disclaimer.",
+      "title": "Disclaimer",
+      "type": "string"
+    }
+  },
+  "required": [
+    "data_source_mode",
+    "projection_method",
+    "study_area_sq_meters",
+    "baseline_covered_area_sq_meters",
+    "baseline_coverage_fraction",
+    "total_candidates",
+    "feasible_candidates_count",
+    "excluded_candidates_count"
+  ],
+  "title": "CandidatePlacementResult",
+  "type": "object"
+}

@@ -1,0 +1,243 @@
+{
+  "$defs": {
+    "PositionType": {
+      "description": "Nature of spatial position coordinates being evaluated.\nMaintains rigorous distinction between fixed camera sites and estimated animal locations.",
+      "enum": [
+        "camera_site",
+        "estimated_animal_position",
+        "observation_location"
+      ],
+      "title": "PositionType",
+      "type": "string"
+    },
+    "SpatialZone": {
+      "additionalProperties": false,
+      "description": "Supplied spatial zone boundary (e.g. park core, corridor, buffer zone).",
+      "properties": {
+        "id": {
+          "description": "Stable zone identifier.",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human-readable zone label.",
+          "title": "Name",
+          "type": "string"
+        },
+        "zone_type": {
+          "description": "e.g. 'core_reserve', 'community_buffer', 'road_corridor'.",
+          "title": "Zone Type",
+          "type": "string"
+        },
+        "geometry": {
+          "additionalProperties": true,
+          "description": "GeoJSON-compatible geometry dictionary (Polygon, MultiPolygon, etc.).",
+          "title": "Geometry",
+          "type": "object"
+        },
+        "valid_from": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Start of temporal applicability.",
+          "title": "Valid From"
+        },
+        "valid_to": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "End of temporal applicability.",
+          "title": "Valid To"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "zone_type",
+        "geometry"
+      ],
+      "title": "SpatialZone",
+      "type": "object"
+    },
+    "TargetLocation": {
+      "additionalProperties": false,
+      "description": "Spatial coordinate target evaluated against zones or infrastructure.",
+      "properties": {
+        "target_id": {
+          "description": "Target point identifier (camera ID, encounter ID, etc.).",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "position_type": {
+          "$ref": "#/$defs/PositionType",
+          "default": "camera_site",
+          "description": "Nature of location (camera_site, estimated_animal_position, observation_location)."
+        },
+        "latitude": {
+          "description": "WGS84 latitude.",
+          "maximum": 90.0,
+          "minimum": -90.0,
+          "title": "Latitude",
+          "type": "number"
+        },
+        "longitude": {
+          "description": "WGS84 longitude.",
+          "maximum": 180.0,
+          "minimum": -180.0,
+          "title": "Longitude",
+          "type": "number"
+        },
+        "uncertainty_radius_meters": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Positional uncertainty radius in meters. None indicates uncertainty is unassessed.",
+          "title": "Uncertainty Radius Meters"
+        },
+        "associated_camera_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional associated camera.",
+          "title": "Associated Camera Id"
+        },
+        "associated_encounter_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional associated encounter.",
+          "title": "Associated Encounter Id"
+        },
+        "species_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional associated focal taxon.",
+          "title": "Species Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Time of observation/estimate.",
+          "title": "Timestamp"
+        }
+      },
+      "required": [
+        "target_id",
+        "latitude",
+        "longitude"
+      ],
+      "title": "TargetLocation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Request payload for geofencing and proximity indicators (Feature F14).",
+  "properties": {
+    "target_locations": {
+      "description": "Target locations to evaluate. If omitted, uses cameras with coordinates in snapshot.",
+      "items": {
+        "$ref": "#/$defs/TargetLocation"
+      },
+      "title": "Target Locations",
+      "type": "array"
+    },
+    "zones": {
+      "description": "Spatial zones or infrastructure to test against. If omitted, uses snapshot.spatial_context.zones.",
+      "items": {
+        "$ref": "#/$defs/SpatialZone"
+      },
+      "title": "Zones",
+      "type": "array"
+    },
+    "crs": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": "EPSG:4326",
+      "description": "Expected Coordinate Reference System.",
+      "title": "Crs"
+    },
+    "proximity_threshold_meters": {
+      "default": 100.0,
+      "description": "Proximity distance threshold in meters for boundary proximity alerts.",
+      "minimum": 0.0,
+      "title": "Proximity Threshold Meters",
+      "type": "number"
+    },
+    "expected_revision": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Expected snapshot dataset revision.",
+      "title": "Expected Revision"
+    },
+    "parameters": {
+      "additionalProperties": true,
+      "description": "Optional additional parameters.",
+      "title": "Parameters",
+      "type": "object"
+    }
+  },
+  "title": "ProximityAnalysisRequest",
+  "type": "object"
+}
