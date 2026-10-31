@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WILDSCOPE Shared Taxonomy (Draft)",
+  "description": "Standardized wildlife species taxonomy mapping. Subject to coordination and review with Harsh Rao (Inference Lead).",
+  "version": "1.0.0-draft",
+  "taxa": [
+    {
+      "taxon_id": "panthera_tigris",
+      "scientific_name": "Panthera tigris",
+      "common_name": "Tiger",
+      "class": "Mammalia",
+      "order": "Carnivora",
+      "family": "Felidae",
+      "iucn_status": "Endangered"
+    },
+    {
+      "taxon_id": "panthera_pardus",
+      "scientific_name": "Panthera pardus",
+      "common_name": "Leopard",
+      "class": "Mammalia",
+      "order": "Carnivora",
+      "family": "Felidae",
+      "iucn_status": "Vulnerable"
+    },
+    {
+      "taxon_id": "elephas_maximus",
+      "scientific_name": "Elephas maximus",
+      "common_name": "Asian Elephant",
+      "class": "Mammalia",
+      "order": "Proboscidea",
+      "family": "Elephantidae",
+      "iucn_status": "Endangered"
+    },
+    {
+      "taxon_id": "axis_axis",
+      "scientific_name": "Axis axis",
+      "common_name": "Chital / Spotted Deer",
+      "class": "Mammalia",
+      "order": "Artiodactyla",
+      "family": "Cervidae",
+      "iucn_status": "Least Concern"
+    },
+    {
+      "taxon_id": "bos_gaurus",
+      "scientific_name": "Bos gaurus",
+      "common_name": "Gaur / Indian Bison",
+      "class": "Mammalia",
+      "order": "Artiodactyla",
+      "family": "Bovidae",
+      "iucn_status": "Vulnerable"
+    },
+    {
+      "taxon_id": "sus_scrofa",
+      "scientific_name": "Sus scrofa",
+      "common_name": "Wild Boar",
+      "class": "Mammalia",
+      "order": "Artiodactyla",
+      "family": "Suidae",
+      "iucn_status": "Least Concern"
+    },
+    {
+      "taxon_id": "canis_lupus",
+      "scientific_name": "Canis lupus",
+      "common_name": "Grey Wolf",
+      "class": "Mammalia",
+      "order": "Carnivora",
+      "family": "Canidae",
+      "iucn_status": "Least Concern"
+    },
+    {
+      "taxon_id": "unknown_animal",
+      "scientific_name": "Animalia incertae sedis",
+      "common_name": "Unidentified Animal",
+      "class": null,
+      "order": null,
+      "family": null,
+      "iucn_status": null
+    }
+  ]
+}
