@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wildscope-backend"
+version = "0.1.0"
+description = "WILDSCOPE AI — Backend API, persistent storage, and integration layer"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Santosh Yuvaraj", email = "santoshyuvarajeshwaroju@gmail.com" }
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests/backend"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --strict-markers"
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+]
+markers = [
+    "unit: Pure unit tests",
+    "integration: Integration and database tests",
+    "contract: Pydantic shared contract schema validation tests",
+    "anyio: Asynchronous tests running with AnyIO",
+    "asyncio: Asynchronous tests running with pytest-asyncio",
+]
