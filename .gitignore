@@ -1,9 +1,22 @@
+# ==============================================================================
+# WILDSCOPE AI — Git Ignore Rules
+# ==============================================================================
+
+# OS & Environment Files
+desktop.ini
+Thumbs.db
+.DS_Store
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Distribution / packaging
+# Virtual Environments & Packages
+.venv/
+venv/
+env/
+ENV/
 build/
 develop-eggs/
 dist/
@@ -20,17 +33,26 @@ wheels/
 .installed.cfg
 *.egg
 
-# Pytest / coverage
+# Database & Persistent Storage (SQLite local files)
+*.db
+*.sqlite
+*.sqlite3
+wildscope.db*
+storage/media/
+storage/uploads/
+storage/temp/
+
+# Testing & Coverage
 .pytest_cache/
 .coverage
 htmlcov/
+coverage.xml
 
-# Environments
+# Local Environment Variables & Secrets
 .env
-.venv
-env/
-venv/
-ENV/
+.env.local
+.env.*.local
+*.log
 
 # Large Datasets & Archives
 data/
@@ -39,8 +61,9 @@ caltech_camera_traps*
 *.tar.gz
 *.tar
 
-# IDE / Editor
+# IDE & Editor Scratch Directories
 .vscode/
 .idea/
 *.swp
 *.swo
+*~

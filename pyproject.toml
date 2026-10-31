@@ -3,13 +3,14 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "wildscope-analytics"
+name = "wildscope"
 version = "0.1.0"
-description = "WILDSCOPE Decision Intelligence & Analytics Module - Phase 1 Shared Contracts and Validation"
+description = "WILDSCOPE AI — Backend API, persistent storage, analytics engine, and decision intelligence"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
-    { name = "Kolachalama Sri Shravan", email = "srishravank@gmail.com" }
+    { name = "Kolachalama Sri Shravan", email = "srishravank@gmail.com" },
+    { name = "Santosh Yuvaraj", email = "santoshyuvarajeshwaroju@gmail.com" }
 ]
 dependencies = [
     "pydantic>=2.5.0",
@@ -21,7 +22,18 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
+minversion = "8.0"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+]
+markers = [
+    "unit: Pure unit tests",
+    "integration: Integration and database tests",
+    "contract: Pydantic shared contract schema validation tests",
+    "anyio: Asynchronous tests running with AnyIO",
+    "asyncio: Asynchronous tests running with pytest-asyncio",
+]

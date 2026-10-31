@@ -1,0 +1,123 @@
+{
+  "_comment": "WILDSCOPE Coordinated Test Fixture (Draft). All records explicitly marked simulated. Never used as silent fallback in operational code.",
+  "meta": {
+    "version": "1.0.0-draft",
+    "dataset_revision": 1,
+    "provenance": "simulated",
+    "description": "Standard synthetic dataset for backend tests, frontend UI testing, and intelligence module verification."
+  },
+  "cameras": [
+    {
+      "id": "CAM-01",
+      "label": "Waterhole North Ridge",
+      "timezone": "Asia/Kolkata",
+      "coordinates": [78.4523, 17.3850],
+      "telemetry_status": "reporting",
+      "last_heartbeat_at": "2026-10-30T10:00:00Z",
+      "active_camera_days": 45.0,
+      "provenance": "simulated"
+    },
+    {
+      "id": "CAM-02",
+      "label": "Eastern Corridor Crossing",
+      "timezone": "Asia/Kolkata",
+      "coordinates": [78.4890, 17.3912],
+      "telemetry_status": "unknown",
+      "last_heartbeat_at": null,
+      "active_camera_days": null,
+      "provenance": "simulated"
+    }
+  ],
+  "images": [
+    {
+      "id": "IMG-001",
+      "camera_id": "CAM-01",
+      "captured_at": "2026-10-30T03:15:20Z",
+      "timezone_source": "camera_exif",
+      "content_url": "/api/v1/images/IMG-001/content",
+      "quality_flags": ["low_light"],
+      "provenance": "simulated",
+      "source_media_id": null,
+      "frame_offset_ms": null
+    },
+    {
+      "id": "IMG-002",
+      "camera_id": "CAM-01",
+      "captured_at": "2026-10-30T03:15:28Z",
+      "timezone_source": "camera_exif",
+      "content_url": "/api/v1/images/IMG-002/content",
+      "quality_flags": [],
+      "provenance": "simulated",
+      "source_media_id": null,
+      "frame_offset_ms": null
+    }
+  ],
+  "detections": [
+    {
+      "id": "DET-001",
+      "image_id": "IMG-001",
+      "encounter_id": "ENC-001",
+      "bbox": [0.15, 0.22, 0.35, 0.45],
+      "taxon_id": "panthera_tigris",
+      "label": "Tiger",
+      "raw_label": "tiger 0.92",
+      "score": 0.92,
+      "detection_score": 0.98,
+      "classification_score": 0.92,
+      "score_type": "softmax_probability",
+      "calibration_status": "uncalibrated",
+      "alternatives": {
+        "panthera_pardus": 0.05,
+        "unknown_animal": 0.03
+      },
+      "model_version": "megadetector_v5a+speciesnet_v2",
+      "review_status": "confirmed",
+      "provenance": "simulated"
+    },
+    {
+      "id": "DET-002",
+      "image_id": "IMG-002",
+      "encounter_id": "ENC-001",
+      "bbox": [0.18, 0.20, 0.38, 0.48],
+      "taxon_id": "panthera_tigris",
+      "label": "Tiger",
+      "raw_label": "tiger 0.89",
+      "score": 0.89,
+      "detection_score": 0.97,
+      "classification_score": 0.89,
+      "score_type": "softmax_probability",
+      "calibration_status": "uncalibrated",
+      "alternatives": {
+        "panthera_pardus": 0.07,
+        "unknown_animal": 0.04
+      },
+      "model_version": "megadetector_v5a+speciesnet_v2",
+      "review_status": "pending",
+      "provenance": "simulated"
+    }
+  ],
+  "encounters": [
+    {
+      "id": "ENC-001",
+      "camera_id": "CAM-01",
+      "image_ids": ["IMG-001", "IMG-002"],
+      "detection_ids": ["DET-001", "DET-002"],
+      "start_at": "2026-10-30T03:15:20Z",
+      "end_at": "2026-10-30T03:15:28Z",
+      "grouping_rule_version": "rule_v1_cam_timegap_60s",
+      "provenance": "simulated"
+    }
+  ],
+  "reviews": [
+    {
+      "id": "REV-001",
+      "detection_id": "DET-001",
+      "decision": "confirmed",
+      "corrected_taxon_id": null,
+      "reason": "Clear flank striping visible on adult female tiger.",
+      "reviewer_id": "researcher_demo",
+      "created_at": "2026-10-30T05:00:00Z",
+      "resulting_revision": 1
+    }
+  ]
+}

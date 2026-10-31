@@ -1,0 +1,86 @@
+.ws-evidence-viewer {
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-subtle);
+  display: flex;
+  flex-direction: column;
+}
+
+.ws-viewer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 18px;
+  background-color: #fafbf9;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.74rem;
+}
+
+.ws-viewer-title {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+}
+
+.ws-viewer-badge code {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.ws-viewer-stage {
+  background-color: #0b1a14;
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.ws-viewer-image {
+  max-width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  display: block;
+}
+
+.ws-viewer-fallback,
+.ws-viewer-empty {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 24px;
+  background-color: var(--color-bg);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  max-width: 440px;
+  margin: 32px;
+}
+
+.ws-fallback-icon,
+.ws-empty-icon {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.ws-fallback-content,
+.ws-empty-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.8rem;
+  color: var(--color-text);
+}
+
+.ws-fallback-content span,
+.ws-empty-content span {
+  color: var(--color-muted);
+  font-size: 0.76rem;
+}
+
+.ws-fallback-content code,
+.ws-empty-content code {
+  color: var(--color-primary);
+}

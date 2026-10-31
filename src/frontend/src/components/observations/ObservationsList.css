@@ -1,0 +1,199 @@
+.ws-list-container {
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-subtle);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.ws-table-wrapper {
+  overflow-x: auto;
+}
+
+.ws-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.84rem;
+}
+
+.ws-table thead th {
+  background-color: #f7f9f6;
+  color: var(--color-muted);
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.ws-table tbody td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+  vertical-align: middle;
+}
+
+.ws-table-row {
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.ws-table-row:hover {
+  background-color: #f0f4ef;
+}
+
+.ws-table-row.is-selected {
+  background-color: rgba(36, 92, 69, 0.08);
+}
+
+.ws-table-row:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.ws-cell-id code {
+  color: var(--color-primary);
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+
+.ws-species-name {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ws-value-pending {
+  color: var(--color-muted);
+  font-style: italic;
+  font-size: 0.75rem;
+}
+
+.ws-cell-camera code {
+  font-size: 0.78rem;
+  background-color: var(--color-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+}
+
+.ws-status-tag {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  padding: 3px 8px;
+  border-radius: 10px;
+}
+
+.ws-status-tag.status-verified {
+  background-color: var(--color-status-online-bg);
+  color: var(--color-status-online);
+}
+
+.ws-status-tag.status-unreviewed {
+  background-color: rgba(229, 173, 82, 0.15);
+  color: #a46d18;
+}
+
+.ws-status-tag.status-flagged {
+  background-color: var(--color-status-offline-bg);
+  color: var(--color-status-offline);
+}
+
+.ws-evidence-badge {
+  font-size: 0.72rem;
+  color: var(--color-primary);
+  font-weight: 600;
+  background-color: rgba(36, 92, 69, 0.08);
+  padding: 2px 7px;
+  border-radius: 10px;
+}
+
+.ws-evidence-none {
+  font-size: 0.72rem;
+  color: var(--color-muted);
+}
+
+/* Pagination Bar */
+.ws-pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 18px;
+  background-color: #fafbf9;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.78rem;
+  color: var(--color-muted);
+}
+
+.ws-pagination-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ws-revision-tag {
+  font-size: 0.72rem;
+}
+
+.ws-revision-tag code {
+  color: var(--color-primary);
+}
+
+.ws-pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ws-page-btn {
+  padding: 6px 12px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--color-text);
+  background-color: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.ws-page-btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.ws-page-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ws-page-index {
+  font-weight: 600;
+  color: var(--color-text);
+  padding: 0 4px;
+}
+
+.ws-pagination-unavailable-box {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ws-unavailable-tag {
+  font-size: 0.76rem;
+  color: var(--color-muted);
+}
+
+.ws-unavailable-tag code {
+  color: var(--color-primary);
+}
