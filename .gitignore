@@ -1,0 +1,48 @@
+# ==============================================================================
+# WILDSCOPE AI — Git Ignore Rules
+# ==============================================================================
+
+# OS & Environment Files
+desktop.ini
+Thumbs.db
+.DS_Store
+
+# Virtual Environments & Packages
+.venv/
+venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Database & Persistent Storage (SQLite local files)
+*.db
+*.sqlite
+*.sqlite3
+storage/media/
+storage/uploads/
+storage/temp/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Local Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+*.log
+
+# IDE & Editor Scratch Directories
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+.idea/
+*.swp
+*~
