@@ -1,0 +1,143 @@
+.ws-sidebar {
+  width: 270px;
+  background-color: var(--color-sidebar);
+  color: var(--color-sidebar-text);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-right: 1px solid var(--color-sidebar-border);
+  min-height: 100vh;
+}
+
+.ws-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 20px;
+  border-bottom: 1px solid var(--color-sidebar-border);
+}
+
+.ws-brand-icon {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.ws-brand-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #ffffff;
+  margin: 0;
+}
+
+.ws-brand-subtitle {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-sidebar-text-muted);
+  margin-top: 2px;
+}
+
+.ws-sidebar-nav {
+  flex: 1;
+  padding: 20px 12px;
+  overflow-y: auto;
+}
+
+.ws-nav-heading {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-sidebar-text-muted);
+  padding: 0 12px 10px;
+}
+
+.ws-nav-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ws-nav-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  position: relative;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  color: var(--color-sidebar-text);
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-align: left;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.ws-nav-item:hover {
+  background-color: var(--color-sidebar-hover);
+  color: #ffffff;
+}
+
+.ws-nav-item.active {
+  background-color: var(--color-sidebar-active);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.ws-nav-indicator {
+  width: 4px;
+  height: 16px;
+  border-radius: 2px;
+  background-color: var(--color-accent);
+  position: absolute;
+  left: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.ws-nav-item.active .ws-nav-indicator {
+  opacity: 1;
+}
+
+.ws-nav-label {
+  flex: 1;
+  margin-left: 6px;
+}
+
+.ws-nav-badge {
+  font-size: 0.68rem;
+  background-color: rgba(229, 173, 82, 0.2);
+  color: var(--color-accent);
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.ws-sidebar-footer {
+  padding: 18px 20px;
+  border-top: 1px solid var(--color-sidebar-border);
+}
+
+.ws-team-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ws-team-badge {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.ws-branch-info {
+  font-size: 0.72rem;
+  color: var(--color-sidebar-text-muted);
+}
+
+.ws-branch-info code {
+  color: var(--color-accent);
+  font-weight: 600;
+}
