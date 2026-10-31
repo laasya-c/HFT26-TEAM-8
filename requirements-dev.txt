@@ -1,0 +1,12 @@
+# WILDSCOPE — Development and testing dependencies
+# ==================================================
+# Tools required to run the test suite and development workflows.
+# NOT required to run the inference component itself.
+#
+# Install after the runtime dependencies:
+#   pip install -r requirements.txt        # runtime deps first
+#   pip install -r requirements-dev.txt   # then dev deps
+
+# Test runner for the mocked unit/integration test suite.
+pytest>=8.0
+

@@ -1,12 +1,49 @@
 # ==============================================================================
-# WILDSCOPE Backend — Dependencies (Phase 1 Baseline)
+# WILDSCOPE — Combined Runtime Dependencies
 # ==============================================================================
-# Runtime Note:
-# - Current local testing environment: Python 3.14.3 (Windows)
-# - Official Team ByteStrom baseline: Python 3.11 (RTX 4050 CUDA compatible)
+# This file contains dependencies for ALL modules (backend + inference).
+# Each section is owned by its respective team member.
 #
-# Packages marked [VERIFIED-3.14] are pre-installed and confirmed functioning in .venv.
-# Packages marked [PURE-PYTHON / PENDING-PIP] run purely in Python standard bytecode.
+# Runtime Note:
+# - Backend testing environment: Python 3.14.3 (Windows)
+# - Inference pipeline: Python 3.11 (RTX 4050 CUDA compatible)
+# - Official Team ByteStrom baseline: Python 3.11
+#
+# ==============================================================================
+# IMPORTANT: PyTorch must be installed BEFORE speciesnet.
+# ==============================================================================
+#
+# The PyTorch packages (torch, torchvision) are NOT available from the default
+# PyPI index with CUDA support.  Install them manually first:
+#
+#   CPU-only (no GPU):
+#     pip install torch torchvision
+#
+#   CUDA 12.8 (RTX 30/40-series, tested configuration):
+#     pip install torch==2.11.0+cu128 torchvision==0.26.0+cu128 \
+#         --index-url https://download.pytorch.org/whl/cu128
+#
+#   Other CUDA versions: see https://pytorch.org/get-started/locally/
+#
+# Then install the remaining runtime dependencies:
+#   pip install -r requirements.txt
+#
+# For development and testing, also install:
+#   pip install -r requirements-dev.txt
+#
+# For exact inference environment reproduction on matching CUDA hardware:
+#   pip install torch==2.11.0+cu128 torchvision==0.26.0+cu128 \
+#       --index-url https://download.pytorch.org/whl/cu128
+#   pip install -r requirements-lock-cuda.txt
+#
+# ==============================================================================
+
+
+# ==============================================================================
+# BACKEND DEPENDENCIES (Santosh)
+# ==============================================================================
+# Packages marked [VERIFIED-3.14] are pre-installed and confirmed functioning.
+# Packages marked [PURE-PYTHON / PENDING-PIP] run purely in Python bytecode.
 # ==============================================================================
 
 # Core Web Framework & ASGI Server [VERIFIED-3.14]
@@ -36,8 +73,34 @@ anyio>=4.0.0
 argon2-cffi>=23.1.0
 pyjwt>=2.8.0
 
-# ------------------------------------------------------------------------------
+
+# ==============================================================================
+# INFERENCE DEPENDENCIES (Harsh)
+# ==============================================================================
+# CUDA-specific build tags are in requirements-lock-cuda.txt (not here).
+# ==============================================================================
+
+# SpeciesNet: Google animal classifier + MegaDetector V5 detector.
+# Pulls in yolov5, scipy, kagglehub, huggingface_hub, etc. transitively.
+speciesnet>=5.0.5
+
+# PyTorch: install manually BEFORE this file (see instructions above).
+# CUDA build tag deliberately omitted for portability.
+torch>=2.0
+torchvision>=0.15
+
+# Numerical arrays — used internally by speciesnet and inference code.
+numpy>=1.24
+
+# Image loading and manipulation — used by SpeciesNetAnimalDetector and
+# the visualization scripts in tests/inference/.
+pillow>=10.0
+
+
+# ==============================================================================
 # TEAM RUNTIME WARNING:
-# Harsh's vision pipeline (PyTorch + CUDA 12) and Shravan's geospatial modules
-# require Python 3.11. They must NOT be installed in this Python 3.14 environment.
-# ------------------------------------------------------------------------------
+# The backend modules (FastAPI, SQLAlchemy) are verified on Python 3.14.
+# The inference pipeline (PyTorch + CUDA 12) requires Python 3.11.
+# Shravan's geospatial modules also require Python 3.11.
+# When running the full stack, use Python 3.11 as the common baseline.
+# ==============================================================================
