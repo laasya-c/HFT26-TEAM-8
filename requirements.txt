@@ -1,0 +1,50 @@
+# WILDSCOPE — Runtime dependencies (portable)
+# ============================================
+# Direct dependencies required to RUN the WILDSCOPE inference component.
+# Does NOT include development or testing tools — see requirements-dev.txt.
+# Does NOT include CUDA-specific build tags — see requirements-lock-cuda.txt.
+#
+# =============================================================================
+# IMPORTANT: PyTorch must be installed BEFORE speciesnet.
+# =============================================================================
+#
+# The PyTorch packages (torch, torchvision) are NOT available from the default
+# PyPI index with CUDA support.  Install them manually first:
+#
+#   CPU-only (no GPU):
+#     pip install torch torchvision
+#
+#   CUDA 12.8 (RTX 30/40-series, tested configuration):
+#     pip install torch==2.11.0+cu128 torchvision==0.26.0+cu128 \
+#         --index-url https://download.pytorch.org/whl/cu128
+#
+#   Other CUDA versions: see https://pytorch.org/get-started/locally/
+#
+# Then install the remaining runtime dependencies:
+#   pip install -r requirements.txt
+#
+# For development and testing, also install:
+#   pip install -r requirements-dev.txt
+#
+# For exact environment reproduction on matching CUDA hardware:
+#   pip install torch==2.11.0+cu128 torchvision==0.26.0+cu128 \
+#       --index-url https://download.pytorch.org/whl/cu128
+#   pip install -r requirements-lock-cuda.txt
+#
+# =============================================================================
+
+# SpeciesNet: Google animal classifier + MegaDetector V5 detector.
+# Pulls in yolov5, scipy, kagglehub, huggingface_hub, etc. transitively.
+speciesnet>=5.0.5
+
+# PyTorch: install manually BEFORE this file (see instructions above).
+# CUDA build tag deliberately omitted for portability.
+torch>=2.0
+torchvision>=0.15
+
+# Numerical arrays — used internally by speciesnet and inference code.
+numpy>=1.24
+
+# Image loading and manipulation — used by SpeciesNetAnimalDetector and
+# the visualization scripts in tests/inference/.
+pillow>=10.0

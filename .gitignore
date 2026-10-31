@@ -1,0 +1,128 @@
+# =============================================================================
+# WILDSCOPE — HFT26-TEAM-8 .gitignore
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Virtual environment
+# Never commit the .venv folder — it is large (multi-GB with CUDA PyTorch)
+# and must be recreated locally using requirements.txt
+# -----------------------------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+
+# -----------------------------------------------------------------------------
+# Python bytecode and caches
+# These are auto-generated and machine-specific
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+
+# -----------------------------------------------------------------------------
+# Model weights and checkpoints
+# These are large binary files downloaded at runtime — do NOT commit them
+# They are fetched automatically by speciesnet / huggingface_hub / kagglehub
+# -----------------------------------------------------------------------------
+*.pt
+*.pth
+*.onnx
+*.ckpt
+*.bin
+*.safetensors
+*.weights
+*.h5
+*.pkl
+
+# Hugging Face local cache
+.cache/
+~/.cache/huggingface/
+huggingface/
+
+# Kaggle / kagglehub cache
+~/.cache/kagglehub/
+
+# SpeciesNet model cache (default download location)
+models/
+model_weights/
+checkpoints/
+
+# -----------------------------------------------------------------------------
+# Datasets — never commit raw image datasets
+# Download separately and keep outside the repo, or use a data registry
+# -----------------------------------------------------------------------------
+data/
+datasets/
+*.csv.gz
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# -----------------------------------------------------------------------------
+# Inference outputs and temporary files
+# Test runs, detection results, temporary images
+# -----------------------------------------------------------------------------
+outputs/
+results/
+runs/
+tmp/
+temp/
+*.json.tmp
+
+# -----------------------------------------------------------------------------
+# Windows system files
+# desktop.ini is a Windows folder-settings file — leave untouched, don't commit
+# -----------------------------------------------------------------------------
+desktop.ini
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+
+# -----------------------------------------------------------------------------
+# IDE and editor configuration
+# Each developer uses their own editor — don't impose one
+# -----------------------------------------------------------------------------
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# -----------------------------------------------------------------------------
+# Build artifacts
+# -----------------------------------------------------------------------------
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+site/
+
+# -----------------------------------------------------------------------------
+# Logs and profiling
+# -----------------------------------------------------------------------------
+*.log
+*.prof
+*.lprof
+
+# -----------------------------------------------------------------------------
+# Jupyter notebooks checkpoints
+# -----------------------------------------------------------------------------
+.ipynb_checkpoints/
+
+# -----------------------------------------------------------------------------
+# Test and coverage artifacts
+# -----------------------------------------------------------------------------
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+

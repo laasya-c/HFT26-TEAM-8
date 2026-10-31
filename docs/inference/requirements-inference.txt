@@ -1,0 +1,128 @@
+# WILDSCOPE — Inference component: installation guide
+# docs/inference/requirements-inference.txt
+#
+# This file is the human-readable installation reference.  It explains the
+# four dependency files in this repository and how to use them.
+#
+# =============================================================================
+# Four dependency files — which one to use
+# =============================================================================
+#
+# 1. requirements.txt  (repo root)
+#    Portable RUNTIME dependency list.  Lists only what is needed to run
+#    the inference component itself.  No CUDA build tags.  No dev tools.
+#
+# 2. requirements-dev.txt  (repo root)
+#    Development and testing dependencies (pytest, etc.).  Install in
+#    addition to requirements.txt when you need to run the test suite.
+#
+# 3. requirements-lock-cuda.txt  (repo root)
+#    Exact pip-freeze snapshot of the tested environment.
+#    Pins every transitive package to the version used during development.
+#    CUDA-specific build tags ARE included (torch==2.11.0+cu128, etc.).
+#    Use this to reproduce the exact environment on matching hardware.
+#
+# 4. docs/inference/requirements-inference.txt  (this file)
+#    Human-readable installation guide with context, ordering rules,
+#    hardware notes and licence warnings.
+#
+# =============================================================================
+# Tested environment
+# =============================================================================
+#
+# OS       : Windows 11
+# Python   : 3.12.10 (CPython 64-bit, MSC v.1943)
+# CUDA     : 12.8 (driver 592.82; torch runtime reports 13.1 via compat)
+# GPU      : NVIDIA GeForce RTX 4050 Laptop GPU (6 140 MB VRAM)
+# Date     : 2026-10-31
+#
+# =============================================================================
+# Installation — step by step
+# =============================================================================
+#
+# PyTorch MUST be installed before speciesnet to prevent pip from silently
+# replacing the CUDA build with a CPU-only wheel.
+#
+# ── Step 1: Install PyTorch ──────────────────────────────────────────────────
+#
+#   CPU-only (no GPU):
+#     pip install torch torchvision
+#
+#   CUDA 12.8 (tested configuration — RTX 30/40-series):
+#     pip install torch==2.11.0+cu128 torchvision==0.26.0+cu128 \
+#         --index-url https://download.pytorch.org/whl/cu128
+#
+#   Other CUDA versions: https://pytorch.org/get-started/locally/
+#
+# ── Step 2: Install runtime dependencies ─────────────────────────────────────
+#
+#   pip install -r requirements.txt
+#
+#   This installs speciesnet (which pulls yolov5, scipy, kagglehub,
+#   huggingface_hub, etc. transitively), numpy, and pillow.
+#
+# ── Step 3 (optional): Install development and testing tools ─────────────────
+#
+#   pip install -r requirements-dev.txt
+#
+#   Installs pytest and other development-only tools.  Not required to run
+#   the inference component in production.
+#
+# ── Step 4 (optional): Exact environment reproduction ────────────────────────
+#
+#   To reproduce the exact package versions used during development
+#   (same CUDA version and hardware), use the lock file instead of Steps 2-3:
+#
+#     pip install torch==2.11.0+cu128 torchvision==0.26.0+cu128 \
+#         --index-url https://download.pytorch.org/whl/cu128
+#     pip install -r requirements-lock-cuda.txt
+#
+# ── Step 5: Verify CUDA is active ────────────────────────────────────────────
+#
+#   python -c "import torch; print(torch.cuda.is_available())"  # must print True
+#
+# =============================================================================
+# Direct runtime dependencies (documented here for reference)
+# =============================================================================
+#
+# ── Core inference (required) ─────────────────────────────────────────────────
+torch==2.11.0+cu128          # installed via PyTorch index (Step 1 above)
+torchvision==0.26.0+cu128    # installed via PyTorch index (Step 1 above)
+speciesnet==5.0.5            # Google animal classifier + MegaDetector V5
+numpy==2.5.4
+pillow==13.0.0
+
+# ── Key transitive dependencies pulled in by speciesnet ──────────────────────
+yolov5==7.0.11               # animal detector backbone (see LICENCE NOTES below)
+absl-py==2.5.1
+humanfriendly==10.0
+kagglehub==1.0.3
+huggingface_hub==2.4.0
+onnx2torch==1.5.15
+scipy==1.18.1
+
+# ── Development / testing ─────────────────────────────────────────────────────
+pytest==8.3.5                # install via requirements-dev.txt
+
+# =============================================================================
+# Model weights
+# =============================================================================
+#
+# SpeciesNet model weights are downloaded automatically at first run via
+# kagglehub.  They are NOT included in the repository.
+#
+# Default cache location: ~/.cache/kagglehub/
+# Approx. size: ~600 MB
+# A Kaggle account is required for the initial download.
+#
+# =============================================================================
+# Licence notes
+# =============================================================================
+#
+# yolov5==7.0.11 is pulled in by speciesnet as a transitive dependency.
+# The installed dist-info declares GPL-3.0.  The upstream Ultralytics GitHub
+# repository carries AGPL-3.0, creating a conflict that has not been
+# independently resolved by legal review.
+#
+# See docs/inference/LICENSING.md for full detail.
+# Do not distribute or deploy externally without legal review.
