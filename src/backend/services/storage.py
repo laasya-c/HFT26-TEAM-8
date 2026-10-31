@@ -13,7 +13,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from src.backend.config import settings
 from src.backend.core.exceptions import ValidationException
