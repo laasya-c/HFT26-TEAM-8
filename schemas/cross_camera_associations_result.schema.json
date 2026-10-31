@@ -98,14 +98,55 @@
           "type": "string"
         },
         "nominal_gap_seconds": {
-          "description": "Nominal temporal gap in seconds between encounter intervals.",
+          "description": "Nominal temporal gap in seconds between encounter intervals: max(0, start_B - end_A, start_A - end_B).",
           "title": "Nominal Gap Seconds",
           "type": "number"
         },
+        "min_possible_gap_seconds": {
+          "description": "Exact attainable lower bound on temporal separation in seconds accounting for combined pairwise clock uncertainty: max(0, nominal_gap - uncertainty).",
+          "title": "Min Possible Gap Seconds",
+          "type": "number"
+        },
+        "max_possible_gap_seconds": {
+          "description": "Exact attainable upper bound on temporal separation in seconds accounting for combined pairwise clock uncertainty: max(0, (start_B - end_A) + U, (start_A - end_B) + U). Note: for overlapping intervals, G + U is an enclosure, while this field calculates the exact attainable supremum.",
+          "title": "Max Possible Gap Seconds",
+          "type": "number"
+        },
         "effective_gap_seconds": {
-          "description": "Conservative temporal gap in seconds accounting for clock uncertainty.",
+          "description": "Backward-compatible alias for min_possible_gap_seconds. Lower bound of possible gap range, NOT a definitive corrected gap.",
           "title": "Effective Gap Seconds",
           "type": "number"
+        },
+        "temporal_eligibility": {
+          "description": "Eligibility classification: 'definitely_within_threshold' if max_possible_gap <= threshold else 'possibly_within_threshold'.",
+          "title": "Temporal Eligibility",
+          "type": "string"
+        },
+        "clock_offset_seconds_a": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Applied clock offset in seconds for camera A (t_corrected = t_raw + offset).",
+          "title": "Clock Offset Seconds A"
+        },
+        "clock_offset_seconds_b": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Applied clock offset in seconds for camera B (t_corrected = t_raw + offset).",
+          "title": "Clock Offset Seconds B"
         },
         "temporal_relation": {
           "description": "'overlapping' or 'disjoint'.",
@@ -132,7 +173,7 @@
             }
           ],
           "default": null,
-          "description": "Geodesic distance between cameras in meters if coordinates exist and are evaluated.",
+          "description": "Approximate spherical great-circle camera separation in meters if coordinates exist and are evaluated. Camera separation is not animal travel distance.",
           "title": "Camera Distance Meters"
         },
         "spatial_units": {
@@ -185,7 +226,10 @@
         "start_time_b",
         "end_time_b",
         "nominal_gap_seconds",
+        "min_possible_gap_seconds",
+        "max_possible_gap_seconds",
         "effective_gap_seconds",
+        "temporal_eligibility",
         "temporal_relation",
         "observed_interval_order",
         "spatial_check_status",
@@ -221,6 +265,41 @@
       "description": "Clock uncertainty propagated in seconds.",
       "title": "Clock Uncertainty Seconds",
       "type": "number"
+    },
+    "clock_offsets_applied": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Per-camera clock offsets applied in seconds (t_corrected = t_raw + offset).",
+      "title": "Clock Offsets Applied"
+    },
+    "timestamps_pre_corrected": {
+      "default": false,
+      "description": "Whether timestamps were pre-corrected prior to analysis.",
+      "title": "Timestamps Pre Corrected",
+      "type": "boolean"
+    },
+    "correction_provenance": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Documented provenance for pre-corrected timestamps or offset source.",
+      "title": "Correction Provenance"
     },
     "spatial_mode": {
       "description": "Spatial mode used during evaluation.",

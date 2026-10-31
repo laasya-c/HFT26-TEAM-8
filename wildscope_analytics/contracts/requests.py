@@ -292,15 +292,19 @@ class CrossCameraAssociationRequest(BaseContractModel):
         description=(
             "Policy declaring the basis for comparing timestamps across different physical cameras. "
             "Options: documented_sync, analyst_assumption, offsets_known, unknown. "
-            "When 'unknown', time-based association returns INSUFFICIENT_DATA because inter-camera clock alignment is unverified."
+            "When 'unknown', time-based association returns INSUFFICIENT_DATA because inter-camera clock alignment is unverified. "
+            "When 'offsets_known', requires either valid per-camera clock_offsets dict (seconds, t_corrected = t_raw + offset) "
+            "or timestamps_pre_corrected=True with correction_provenance. Uncertainty bounds alone do not satisfy offsets_known."
         )
     )
     clock_uncertainty_seconds: float = Field(
         default=0.0,
         ge=0.0,
         description=(
-            "Total clock-offset uncertainty in seconds between cameras (default: 0.0s). "
-            "Propagated conservatively: effective_gap = max(0, nominal_gap - clock_uncertainty_seconds)."
+            "Combined pairwise clock-offset uncertainty bound U_pair >= 0 in seconds between cameras (default: 0.0s). "
+            "If individual cameras have per-camera clock uncertainties u_A and u_B, then U_pair = u_A + u_B. "
+            "For nominal gap G, true separation lies within the possible gap range [max(0, G - U_pair), G + U_pair]. "
+            "Threshold eligibility means 'possibly within window' (min_possible_gap <= max_temporal_separation_seconds)."
         )
     )
     spatial_mode: SpatialMode = Field(

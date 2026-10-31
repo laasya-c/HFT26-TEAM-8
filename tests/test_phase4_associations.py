@@ -422,6 +422,7 @@ class TestClockComparabilityAndUncertainty:
             max_temporal_separation_seconds=3600.0,
             clock_uncertainty_seconds=600.0,
             clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            parameters={"timestamps_pre_corrected": True, "correction_provenance": "field_audit_20261015"},
         )
         resp = analyze(snap, req)
 
@@ -429,7 +430,376 @@ class TestClockComparabilityAndUncertainty:
         assert res.total_matching_pairs_found == 1
         assoc = res.associations[0]
         assert assoc.nominal_gap_seconds == 3900.0
+        assert assoc.min_possible_gap_seconds == 3300.0
+        assert assoc.max_possible_gap_seconds == 4500.0
         assert assoc.effective_gap_seconds == 3300.0
+        assert assoc.temporal_eligibility == "possibly_within_threshold"
+
+    def test_offsets_known_without_evidence_returns_insufficient_data(self):
+        """OFFSETS_KNOWN without accompanying clock_offsets or pre-corrected timestamps returns INSUFFICIENT_DATA."""
+        c1 = _cam("cam_01")
+        c2 = _cam("cam_02")
+        d1 = _det("det_01", "obs_01", "canis_latrans")
+        d2 = _det("det_02", "obs_02", "canis_latrans")
+        e1 = _enc("enc_01", "cam_01", ["det_01"], T0, T1)
+        e2 = _enc("enc_02", "cam_02", ["det_02"], T1, T2)
+
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[c1, c2],
+            observations=[_obs("obs_01", "cam_01"), _obs("obs_02", "cam_02")],
+            detections=[d1, d2],
+            encounters=[e1, e2],
+        )
+
+        # Selected enum alone without offsets or pre-correction
+        req = CrossCameraAssociationRequest(
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            clock_uncertainty_seconds=0.0,
+        )
+        resp = analyze(snap, req)
+
+        assert resp.status == ResponseStatus.INSUFFICIENT_DATA
+        assert any("offsets_known" in lim.lower() for lim in resp.limitations)
+        assert resp.result is None
+
+    def test_positive_uncertainty_alone_does_not_satisfy_offsets_known(self):
+        """Positive uncertainty bound alone does NOT satisfy OFFSETS_KNOWN without offsets or pre-correction."""
+        c1 = _cam("cam_01")
+        c2 = _cam("cam_02")
+        d1 = _det("det_01", "obs_01", "canis_latrans")
+        d2 = _det("det_02", "obs_02", "canis_latrans")
+        e1 = _enc("enc_01", "cam_01", ["det_01"], T0, T1)
+        e2 = _enc("enc_02", "cam_02", ["det_02"], T1, T2)
+
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[c1, c2],
+            observations=[_obs("obs_01", "cam_01"), _obs("obs_02", "cam_02")],
+            detections=[d1, d2],
+            encounters=[e1, e2],
+        )
+
+        # clock_uncertainty_seconds > 0 supplied, but no offsets or pre-correction flag
+        req = CrossCameraAssociationRequest(
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            clock_uncertainty_seconds=300.0,
+        )
+        resp = analyze(snap, req)
+
+        assert resp.status == ResponseStatus.INSUFFICIENT_DATA
+        assert any("uncertainty bounds alone do not constitute offset corrections" in lim.lower() for lim in resp.limitations)
+        assert resp.result is None
+
+    def test_offsets_known_with_clock_offsets_param_proceeds(self):
+        """OFFSETS_KNOWN with clock_offsets parameter proceeds with OK."""
+        c1 = _cam("cam_01")
+        c2 = _cam("cam_02")
+        d1 = _det("det_01", "obs_01", "canis_latrans")
+        d2 = _det("det_02", "obs_02", "canis_latrans")
+        e1 = _enc("enc_01", "cam_01", ["det_01"], T0, T1)
+        e2 = _enc("enc_02", "cam_02", ["det_02"], T1, T2)
+
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[c1, c2],
+            observations=[_obs("obs_01", "cam_01"), _obs("obs_02", "cam_02")],
+            detections=[d1, d2],
+            encounters=[e1, e2],
+        )
+
+        req = CrossCameraAssociationRequest(
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            parameters={"clock_offsets": {"cam_01": 0.0, "cam_02": 2.5}},
+        )
+        resp = analyze(snap, req)
+
+        assert resp.status == ResponseStatus.OK
+        res = CrossCameraAssociationsResult.model_validate(resp.result)
+        assert res.total_matching_pairs_found == 1
+        assert res.clock_offsets_applied == {"cam_01": 0.0, "cam_02": 2.5}
+
+    def test_offsets_known_with_pre_corrected_flag_and_provenance_proceeds(self):
+        """OFFSETS_KNOWN with timestamps_pre_corrected=True and correction_provenance proceeds with OK."""
+        c1 = _cam("cam_01")
+        c2 = _cam("cam_02")
+        d1 = _det("det_01", "obs_01", "canis_latrans")
+        d2 = _det("det_02", "obs_02", "canis_latrans")
+        e1 = _enc("enc_01", "cam_01", ["det_01"], T0, T1)
+        e2 = _enc("enc_02", "cam_02", ["det_02"], T1, T2)
+
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[c1, c2],
+            observations=[_obs("obs_01", "cam_01"), _obs("obs_02", "cam_02")],
+            detections=[d1, d2],
+            encounters=[e1, e2],
+        )
+
+        req = CrossCameraAssociationRequest(
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            parameters={"timestamps_pre_corrected": True, "correction_provenance": "NTP_audit_20261015"},
+        )
+        resp = analyze(snap, req)
+
+        assert resp.status == ResponseStatus.OK
+        res = CrossCameraAssociationsResult.model_validate(resp.result)
+        assert res.total_matching_pairs_found == 1
+        assert res.timestamps_pre_corrected is True
+        assert res.correction_provenance == "NTP_audit_20261015"
+
+    def test_pre_corrected_without_provenance_rejected(self):
+        """Pre-corrected timestamps without correction provenance returns INSUFFICIENT_DATA."""
+        c1 = _cam("cam_01")
+        c2 = _cam("cam_02")
+        d1 = _det("det_01", "obs_01", "canis_latrans")
+        d2 = _det("det_02", "obs_02", "canis_latrans")
+        e1 = _enc("enc_01", "cam_01", ["det_01"], T0, T1)
+        e2 = _enc("enc_02", "cam_02", ["det_02"], T1, T2)
+
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[c1, c2],
+            observations=[_obs("obs_01", "cam_01"), _obs("obs_02", "cam_02")],
+            detections=[d1, d2],
+            encounters=[e1, e2],
+        )
+
+        req = CrossCameraAssociationRequest(
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            parameters={"timestamps_pre_corrected": True},  # missing correction_provenance!
+        )
+        resp = analyze(snap, req)
+
+        assert resp.status == ResponseStatus.INSUFFICIENT_DATA
+        assert any("correction provenance" in lim.lower() for lim in resp.limitations)
+
+    def test_pre_corrected_timestamps_not_corrected_twice(self):
+        """Supplying both clock_offsets and timestamps_pre_corrected=True is rejected as ambiguous double correction."""
+        c1 = _cam("cam_01")
+        c2 = _cam("cam_02")
+        d1 = _det("det_01", "obs_01", "canis_latrans")
+        d2 = _det("det_02", "obs_02", "canis_latrans")
+        e1 = _enc("enc_01", "cam_01", ["det_01"], T0, T1)
+        e2 = _enc("enc_02", "cam_02", ["det_02"], T1, T2)
+
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[c1, c2],
+            observations=[_obs("obs_01", "cam_01"), _obs("obs_02", "cam_02")],
+            detections=[d1, d2],
+            encounters=[e1, e2],
+        )
+
+        req = CrossCameraAssociationRequest(
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            parameters={
+                "clock_offsets": {"cam_01": 0.0, "cam_02": 5.0},
+                "timestamps_pre_corrected": True,
+                "correction_provenance": "audit_log",
+            },
+        )
+        resp = analyze(snap, req)
+
+        assert resp.status == ResponseStatus.INVALID_REQUEST
+        assert any("ambiguous" in lim.lower() for lim in resp.limitations)
+        assert any(e.code == "SCHEMA_VIOLATION" for e in resp.errors)
+
+    def test_missing_required_camera_offset_rejected(self):
+        """Camera with encounters in scope but missing from clock_offsets returns INSUFFICIENT_DATA."""
+        c1 = _cam("cam_01")
+        c2 = _cam("cam_02")
+        d1 = _det("det_01", "obs_01", "canis_latrans")
+        d2 = _det("det_02", "obs_02", "canis_latrans")
+        e1 = _enc("enc_01", "cam_01", ["det_01"], T0, T1)
+        e2 = _enc("enc_02", "cam_02", ["det_02"], T1, T2)
+
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[c1, c2],
+            observations=[_obs("obs_01", "cam_01"), _obs("obs_02", "cam_02")],
+            detections=[d1, d2],
+            encounters=[e1, e2],
+        )
+
+        # Only cam_01 is in clock_offsets; cam_02 is missing!
+        req = CrossCameraAssociationRequest(
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            parameters={"clock_offsets": {"cam_01": 0.0}},
+        )
+        resp = analyze(snap, req)
+
+        assert resp.status == ResponseStatus.INSUFFICIENT_DATA
+        assert any("cam_02" in lim for lim in resp.limitations)
+
+    def test_non_finite_offset_rejected(self):
+        """Non-finite clock offset value (NaN, inf) returns INVALID_REQUEST."""
+        c1 = _cam("cam_01")
+        c2 = _cam("cam_02")
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[c1, c2],
+            observations=[_obs("obs_01", "cam_01"), _obs("obs_02", "cam_02")],
+            detections=[_det("det_01", "obs_01", "canis_latrans"), _det("det_02", "obs_02", "canis_latrans")],
+            encounters=[_enc("enc_01", "cam_01", ["det_01"], T0, T1), _enc("enc_02", "cam_02", ["det_02"], T1, T2)],
+        )
+
+        req = CrossCameraAssociationRequest(
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            parameters={"clock_offsets": {"cam_01": float("nan"), "cam_02": 0.0}},
+        )
+        resp = analyze(snap, req)
+
+        assert resp.status == ResponseStatus.INVALID_REQUEST
+        assert any("non-finite" in lim.lower() for lim in resp.limitations)
+
+    def test_applying_offset_changes_pair_eligibility(self):
+        """Applying a per-camera clock offset changes temporal separation and pair eligibility."""
+        c1 = _cam("cam_01")
+        c2 = _cam("cam_02")
+        d1 = _det("det_01", "obs_01", "canis_latrans")
+        d2 = _det("det_02", "obs_02", "canis_latrans")
+
+        # enc_01: 08:00 - 08:15
+        # enc_02: 09:20 - 09:35 -> Raw nominal gap = 65 min = 3900s
+        e1 = _enc("enc_01", "cam_01", ["det_01"], T0, T0 + timedelta(minutes=15))
+        e2 = _enc("enc_02", "cam_02", ["det_02"], T0 + timedelta(minutes=80), T0 + timedelta(minutes=95))
+
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[c1, c2],
+            observations=[_obs("obs_01", "cam_01"), _obs("obs_02", "cam_02")],
+            detections=[d1, d2],
+            encounters=[e1, e2],
+        )
+
+        # 1. With max_gap = 3600.0 (60 min) and zero offset: 3900s > 3600s -> NO MATCH
+        req_no_offset = CrossCameraAssociationRequest(
+            max_temporal_separation_seconds=3600.0,
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            parameters={"clock_offsets": {"cam_01": 0.0, "cam_02": 0.0}},
+        )
+        resp_no_offset = analyze(snap, req_no_offset)
+        res_no_offset = CrossCameraAssociationsResult.model_validate(resp_no_offset.result)
+        assert res_no_offset.total_matching_pairs_found == 0
+
+        # 2. Camera 2 clock was fast by 10 minutes (+600s).
+        # We apply offset -600.0s to cam_02 (t_corrected = t_raw + offset).
+        # Corrected enc_02 is 09:10 - 09:25.
+        # Corrected gap = 09:10 - 08:15 = 55 minutes = 3300s <= 3600s -> ELIGIBLE MATCH!
+        req_with_offset = CrossCameraAssociationRequest(
+            max_temporal_separation_seconds=3600.0,
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            parameters={"clock_offsets": {"cam_01": 0.0, "cam_02": -600.0}},
+        )
+        resp_with_offset = analyze(snap, req_with_offset)
+        res_with_offset = CrossCameraAssociationsResult.model_validate(resp_with_offset.result)
+        assert res_with_offset.total_matching_pairs_found == 1
+        assoc = res_with_offset.associations[0]
+        assert assoc.nominal_gap_seconds == 3300.0
+        assert assoc.clock_offset_seconds_a == 0.0
+        assert assoc.clock_offset_seconds_b == -600.0
+
+    def test_corrections_that_change_chronological_order_handled_before_candidate_generation(self):
+        """Offset corrections that invert the observed chronological order of encounters are handled before candidate generation."""
+        c1 = _cam("cam_01")
+        c2 = _cam("cam_02")
+        d1 = _det("det_01", "obs_01", "canis_latrans")
+        d2 = _det("det_02", "obs_02", "canis_latrans")
+
+        # Raw: enc_01 (cam_01) starts at 08:05, enc_02 (cam_02) starts at 08:00
+        # In raw time, enc_02 was recorded before enc_01!
+        e1 = _enc("enc_01", "cam_01", ["det_01"], T0 + timedelta(minutes=5), T0 + timedelta(minutes=20))
+        e2 = _enc("enc_02", "cam_02", ["det_02"], T0, T0 + timedelta(minutes=15))
+
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[c1, c2],
+            observations=[_obs("obs_01", "cam_01"), _obs("obs_02", "cam_02")],
+            detections=[d1, d2],
+            encounters=[e1, e2],
+        )
+
+        # cam_01 clock was 20 minutes slow (recorded 08:05 when reference was 08:25).
+        # We apply offset +1200.0s to cam_01, shifting enc_01 to 08:25 - 08:40.
+        # Now enc_02 (08:00 - 08:15) is strictly BEFORE enc_01 (08:25 - 08:40)!
+        # Nominal corrected gap = 08:25 - 08:15 = 10 min = 600s.
+        req = CrossCameraAssociationRequest(
+            max_temporal_separation_seconds=1800.0,
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            parameters={"clock_offsets": {"cam_01": 1200.0, "cam_02": 0.0}},
+        )
+        resp = analyze(snap, req)
+        res = CrossCameraAssociationsResult.model_validate(resp.result)
+        assert res.total_matching_pairs_found == 1
+        assoc = res.associations[0]
+        # enc_01 is enc_a (id_1), enc_02 is enc_b (id_2) by canonical ID sorting:
+        # Since enc_02 (08:00-08:15) ends before enc_01 (08:25-08:40), order is B_before_A!
+        assert assoc.nominal_gap_seconds == 600.0
+        assert assoc.observed_interval_order == "B_before_A"
+        assert assoc.temporal_relation == "disjoint"
+
+    def test_clock_uncertainty_pairwise_bound_and_gap_range(self):
+        """
+        Verifies clock_uncertainty_seconds represents combined pairwise uncertainty bound U_pair = u_A + u_B.
+        Verifies possible gap range [max(0, G - U_pair), G + U_pair] and temporal_eligibility classification.
+        """
+        c1 = _cam("cam_01")
+        c2 = _cam("cam_02")
+        d1 = _det("det_01", "obs_01", "canis_latrans")
+        d2 = _det("det_02", "obs_02", "canis_latrans")
+
+        # Camera A uncertainty u_A = 120s, Camera B uncertainty u_B = 180s -> U_pair = 300s
+        u_pair = 120.0 + 180.0  # 300s
+
+        # Enc 1: 08:00 - 08:30 (1800s duration)
+        # Enc 2: 08:40 - 09:00 (nominal gap = 10 min = 600s)
+        e1 = _enc("enc_01", "cam_01", ["det_01"], T0, T0 + timedelta(minutes=30))
+        e2 = _enc("enc_02", "cam_02", ["det_02"], T0 + timedelta(minutes=40), T0 + timedelta(minutes=60))
+
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[c1, c2],
+            observations=[_obs("obs_01", "cam_01"), _obs("obs_02", "cam_02")],
+            detections=[d1, d2],
+            encounters=[e1, e2],
+        )
+
+        # 1. When max_temporal_separation_seconds = 1000s:
+        # Nominal gap = 600s, min_possible_gap = 600 - 300 = 300s, max_possible_gap = 600 + 300 = 900s.
+        # Since max_possible_gap (900s) <= 1000s, eligibility is "definitely_within_threshold".
+        req_def = CrossCameraAssociationRequest(
+            max_temporal_separation_seconds=1000.0,
+            clock_uncertainty_seconds=u_pair,
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            parameters={"timestamps_pre_corrected": True, "correction_provenance": "calibrated_clocks_2026"},
+        )
+        resp_def = analyze(snap, req_def)
+        res_def = CrossCameraAssociationsResult.model_validate(resp_def.result)
+        assoc_def = res_def.associations[0]
+
+        assert assoc_def.nominal_gap_seconds == 600.0
+        assert assoc_def.min_possible_gap_seconds == 300.0
+        assert assoc_def.max_possible_gap_seconds == 900.0
+        assert assoc_def.effective_gap_seconds == 300.0
+        assert assoc_def.temporal_eligibility == "definitely_within_threshold"
+        assert "definitely_within_threshold" in assoc_def.explanation
+
+        # 2. When max_temporal_separation_seconds = 500s:
+        # min_possible_gap (300s) <= 500s < max_possible_gap (900s).
+        # Eligibility is "possibly_within_threshold" (not definitely within threshold).
+        req_pos = CrossCameraAssociationRequest(
+            max_temporal_separation_seconds=500.0,
+            clock_uncertainty_seconds=u_pair,
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            parameters={"timestamps_pre_corrected": True, "correction_provenance": "calibrated_clocks_2026"},
+        )
+        resp_pos = analyze(snap, req_pos)
+        res_pos = CrossCameraAssociationsResult.model_validate(resp_pos.result)
+        assoc_pos = res_pos.associations[0]
+
+        assert assoc_pos.temporal_eligibility == "possibly_within_threshold"
+        assert "possibly_within_threshold" in assoc_pos.explanation
 
 
 # ===========================================================================
@@ -1158,6 +1528,263 @@ class TestExhaustiveVsOptimizedParity:
             f"exhaustive generator ({len(exhaustive_matches)} matches)."
         )
 
+    def test_sliding_window_parity_with_nonzero_uncertainty_and_overlapping_encounters(self):
+        """
+        Optimized sliding-window generator matches exhaustive reference exactly when:
+        1) Clock uncertainty is non-zero (so candidates become eligible solely due to uncertainty).
+        2) Encounters have long overlapping spans across multiple other encounters.
+        """
+        cams = [_cam(f"cam_0{i}") for i in range(1, 5)]
+        detections = []
+        encounters = []
+        observations = []
+
+        base_time = datetime(2026, 10, 15, 8, 0, 0, tzinfo=UTC)
+
+        # enc_01 on cam_01 is a long encounter (3 hours long) from 08:00 to 11:00
+        # Other encounters on cam_02, cam_03, cam_04 occur at different times inside and outside this window
+        enc_specs = [
+            # eid, cid, start_min, duration_min, taxon
+            ("enc_01", "cam_01", 0, 180, "canis_latrans"),    # 08:00 - 11:00 (spans 3 hrs!)
+            ("enc_02", "cam_02", 30, 20, "canis_latrans"),     # 08:30 - 08:50 (inside enc_01 window)
+            ("enc_03", "cam_03", 90, 15, "canis_latrans"),     # 09:30 - 09:45 (inside enc_01 window)
+            ("enc_04", "cam_04", 200, 20, "canis_latrans"),    # 11:20 - 11:40 (nominal gap to enc_01: 20 min = 1200s)
+            ("enc_05", "cam_02", 230, 15, "canis_latrans"),    # 11:50 - 12:05 (nominal gap to enc_04: 10 min = 600s)
+            ("enc_06", "cam_03", 260, 20, "canis_latrans"),    # 12:20 - 12:40 (nominal gap to enc_05: 15 min = 900s)
+        ]
+
+        for eid, cid, start_m, dur_m, taxon in enc_specs:
+            start_dt = base_time + timedelta(minutes=start_m)
+            end_dt = start_dt + timedelta(minutes=dur_m)
+            oid = f"obs_{eid}"
+            did = f"det_{eid}"
+            observations.append(_obs(oid, cid, start_dt))
+            detections.append(_det(did, oid, taxon))
+            encounters.append(_enc(eid, cid, [did], start_dt, end_dt))
+
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=cams,
+            observations=observations,
+            detections=detections,
+            encounters=encounters,
+        )
+
+        # max_gap = 900s (15 min).
+        # Between enc_01 (ends 11:00) and enc_04 (starts 11:20), nominal gap is 20 min = 1200s.
+        # With clock_uncertainty = 400s, min_possible_gap = 1200 - 400 = 800s <= 900s -> BECOMES ELIGIBLE!
+        req = CrossCameraAssociationRequest(
+            max_temporal_separation_seconds=900.0,
+            clock_uncertainty_seconds=400.0,
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            parameters={"timestamps_pre_corrected": True, "correction_provenance": "calibrated_network_2026"},
+            result_limit=100,
+        )
+
+        exhaustive_matches = _exhaustive_pairwise_associations(snap, req)
+        resp_opt = analyze(snap, req)
+        res_opt = CrossCameraAssociationsResult.model_validate(resp_opt.result)
+        optimized_matches = sorted(a.association_id for a in res_opt.associations)
+
+        assert optimized_matches == exhaustive_matches, (
+            f"Mismatch between optimized ({len(optimized_matches)}) and exhaustive ({len(exhaustive_matches)}): "
+            f"opt={optimized_matches}, exh={exhaustive_matches}"
+        )
+        assert "assoc:enc_01::enc_04" in optimized_matches
+
+    def test_optimized_and_exhaustive_agree_after_clock_offset_correction(self):
+        """Optimized sliding-window and exhaustive generator agree exactly after applying per-camera clock offsets."""
+        cams = [_cam(f"cam_0{i}") for i in range(1, 5)]
+        detections = []
+        encounters = []
+        observations = []
+
+        base_time = datetime(2026, 10, 15, 8, 0, 0, tzinfo=UTC)
+
+        # 4 cameras with varying offsets:
+        # cam_01: -300s, cam_02: +150s, cam_03: -60s, cam_04: +200s
+        clock_offsets = {
+            "cam_01": -300.0,
+            "cam_02": 150.0,
+            "cam_03": -60.0,
+            "cam_04": 200.0,
+        }
+
+        enc_specs = [
+            ("enc_01", "cam_01", 0, 20, "canis_latrans"),
+            ("enc_02", "cam_02", 25, 20, "canis_latrans"),
+            ("enc_03", "cam_03", 40, 25, "canis_latrans"),
+            ("enc_04", "cam_04", 60, 20, "canis_latrans"),
+            ("enc_05", "cam_01", 80, 20, "canis_latrans"),
+            ("enc_06", "cam_03", 95, 20, "canis_latrans"),
+        ]
+
+        for eid, cid, start_m, dur_m, taxon in enc_specs:
+            start_dt = base_time + timedelta(minutes=start_m)
+            end_dt = start_dt + timedelta(minutes=dur_m)
+            oid = f"obs_{eid}"
+            did = f"det_{eid}"
+            observations.append(_obs(oid, cid, start_dt))
+            detections.append(_det(did, oid, taxon))
+            encounters.append(_enc(eid, cid, [did], start_dt, end_dt))
+
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=cams,
+            observations=observations,
+            detections=detections,
+            encounters=encounters,
+        )
+
+        req = CrossCameraAssociationRequest(
+            max_temporal_separation_seconds=1200.0,
+            clock_uncertainty_seconds=100.0,
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            parameters={"clock_offsets": clock_offsets},
+            result_limit=100,
+        )
+
+        exhaustive_matches = _exhaustive_pairwise_associations(snap, req)
+        resp_opt = analyze(snap, req)
+        res_opt = CrossCameraAssociationsResult.model_validate(resp_opt.result)
+        optimized_matches = sorted(a.association_id for a in res_opt.associations)
+
+        assert optimized_matches == exhaustive_matches, (
+            f"Offset parity failure: opt={optimized_matches}, exh={exhaustive_matches}"
+        )
+        assert len(optimized_matches) > 0
+
+    def test_source_snapshot_not_mutated_by_offset_application(self):
+        """Applying clock offsets does not mutate encounter timestamps in the original snapshot."""
+        c1 = _cam("cam_01")
+        c2 = _cam("cam_02")
+        d1 = _det("det_01", "obs_01", "canis_latrans")
+        d2 = _det("det_02", "obs_02", "canis_latrans")
+        e1 = _enc("enc_01", "cam_01", ["det_01"], T0, T1)
+        e2 = _enc("enc_02", "cam_02", ["det_02"], T1, T2)
+
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[c1, c2],
+            observations=[_obs("obs_01", "cam_01"), _obs("obs_02", "cam_02")],
+            detections=[d1, d2],
+            encounters=[e1, e2],
+        )
+
+        orig_start_1 = e1.start_time
+        orig_end_1 = e1.end_time
+
+        req = CrossCameraAssociationRequest(
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            parameters={"clock_offsets": {"cam_01": 3600.0, "cam_02": -1800.0}},
+        )
+        resp = analyze(snap, req)
+        assert resp.status == ResponseStatus.OK
+
+        # Verify original encounter objects in snapshot remain untouched
+        assert e1.start_time == orig_start_1
+        assert e1.end_time == orig_end_1
+
+    def test_exact_extrema_gap_range_for_overlapping_intervals(self):
+        """
+        For overlapping intervals, [max(0, G-U), G+U] gives a loose upper bound G+U = U.
+        The exact attainable supremum max(0.0, (s_2-e_1)+U, (s_1-e_2)+U) correctly reflects
+        the true maximum gap under clock uncertainty.
+        """
+        c1 = _cam("cam_01")
+        c2 = _cam("cam_02")
+        d1 = _det("det_01", "obs_01", "canis_latrans")
+        d2 = _det("det_02", "obs_02", "canis_latrans")
+
+        # enc_01: 08:00 - 10:00 (2 hours long)
+        # enc_02: 08:30 - 09:00 (30 min long, nested completely inside enc_01)
+        # Nominal gap G = 0.0s.
+        e1 = _enc("enc_01", "cam_01", ["det_01"], T0, T0 + timedelta(hours=2))
+        e2 = _enc("enc_02", "cam_02", ["det_02"], T0 + timedelta(minutes=30), T0 + timedelta(minutes=60))
+
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[c1, c2],
+            observations=[_obs("obs_01", "cam_01"), _obs("obs_02", "cam_02")],
+            detections=[d1, d2],
+            encounters=[e1, e2],
+        )
+
+        # Under uncertainty U = 600s (10 min), enc_02 can shift at most +-10 min.
+        # It remains entirely within [08:00, 10:00] for all u in [-600, +600]!
+        # The true maximum possible gap is EXACTLY 0.0s, NOT 600.0s!
+        req = CrossCameraAssociationRequest(
+            max_temporal_separation_seconds=3600.0,
+            clock_uncertainty_seconds=600.0,
+            clock_comparability_policy=ClockComparabilityPolicy.OFFSETS_KNOWN,
+            parameters={"timestamps_pre_corrected": True, "correction_provenance": "GPS_sync"},
+        )
+        resp = analyze(snap, req)
+        res = CrossCameraAssociationsResult.model_validate(resp.result)
+        assoc = res.associations[0]
+
+        assert assoc.nominal_gap_seconds == 0.0
+        assert assoc.min_possible_gap_seconds == 0.0
+        assert assoc.max_possible_gap_seconds == 0.0  # Exact attainable supremum is 0.0, not G+U = 600!
+        assert assoc.temporal_eligibility == "definitely_within_threshold"
+
+
+# ===========================================================================
+# 11. UNIFIED ANALYZE() VS DEDICATED ENTRY POINT PARITY
+# ===========================================================================
+
+class TestUnifiedAnalyzeParity:
+    """Verifies direct parity between unified analyze() and find_cross_camera_associations()."""
+
+    def test_parity_between_unified_analyze_and_find_cross_camera_associations(self):
+        """Unified analyze(snapshot, AnalysisRequest) matches find_cross_camera_associations exactly."""
+        c1 = _cam("cam_01")
+        c2 = _cam("cam_02")
+        d1 = _det("det_01", "obs_01", "canis_latrans")
+        d2 = _det("det_02", "obs_02", "canis_latrans")
+        e1 = _enc("enc_01", "cam_01", ["det_01"], T0, T1)
+        e2 = _enc("enc_02", "cam_02", ["det_02"], T1, T2)
+
+        snap = Snapshot(
+            metadata=_meta(),
+            cameras=[c1, c2],
+            observations=[_obs("obs_01", "cam_01"), _obs("obs_02", "cam_02")],
+            detections=[d1, d2],
+            encounters=[e1, e2],
+        )
+
+        # 1. Unified analyze() call with AnalysisRequest and explicit clock_comparability_policy
+        unified_req = AnalysisRequest(
+            metric=AnalysisMetric.CROSS_CAMERA_ASSOCIATIONS,
+            parameters={
+                "clock_comparability_policy": "analyst_assumption",
+                "max_temporal_separation_seconds": 3600.0,
+                "spatial_mode": "time_species_only",
+                "result_limit": 50,
+            },
+        )
+        resp_unified = analyze(snap, unified_req)
+
+        # 2. Dedicated find_cross_camera_associations() call with CrossCameraAssociationRequest
+        dedicated_req = CrossCameraAssociationRequest(
+            clock_comparability_policy=ClockComparabilityPolicy.ANALYST_ASSUMPTION,
+            max_temporal_separation_seconds=3600.0,
+            spatial_mode=SpatialMode.TIME_SPECIES_ONLY,
+            result_limit=50,
+        )
+        from wildscope_analytics.analytics import find_cross_camera_associations
+        resp_dedicated = find_cross_camera_associations(snap, dedicated_req)
+
+        assert resp_unified.status == resp_dedicated.status == ResponseStatus.OK
+        assert resp_unified.result["total_eligible_encounters"] == resp_dedicated.result["total_eligible_encounters"]
+        assert resp_unified.result["total_candidate_pairs_evaluated"] == resp_dedicated.result["total_candidate_pairs_evaluated"]
+        assert resp_unified.result["total_matching_pairs_found"] == resp_dedicated.result["total_matching_pairs_found"]
+        assert resp_unified.result["returned_pairs_count"] == resp_dedicated.result["returned_pairs_count"]
+
+        unified_ids = [a["association_id"] for a in resp_unified.result["associations"]]
+        dedicated_ids = [a["association_id"] for a in resp_dedicated.result["associations"]]
+        assert unified_ids == dedicated_ids
+
 
 # ===========================================================================
 # 11. PART B: CATEGORY MAPPING REGRESSION TEST
@@ -1203,6 +1830,38 @@ class TestCategoryMappingRegression:
         assert anns_by_cat["empty"].is_empty is True
         assert anns_by_cat["coyote"].is_animal is True
         assert anns_by_cat["coyote"].wildscope_taxon_id == "canis_latrans"
+
+    def test_caltech_category_mapping_by_source_id_and_name(self):
+        """Verifies official Caltech Camera Traps source category IDs: empty is 30, car is 33."""
+        from wildscope_analytics.caltech_adapter import _resolve_category
+
+        # Test ID 30 (empty)
+        taxon, is_anim, is_emp, warns = _resolve_category("empty", 30)
+        assert is_anim is False
+        assert is_emp is True
+        assert taxon is None
+
+        # Test ID 33 (car)
+        taxon, is_anim, is_emp, warns = _resolve_category("car", 33)
+        assert is_anim is False
+        assert is_emp is False
+        assert taxon is None
+
+        # Test wildlife IDs: 9 (coyote), 6 (bobcat), 40 (mountain_lion)
+        taxon, is_anim, is_emp, warns = _resolve_category("coyote", 9)
+        assert is_anim is True
+        assert is_emp is False
+        assert taxon == "canis_latrans"
+
+        taxon, is_anim, is_emp, warns = _resolve_category("bobcat", 6)
+        assert is_anim is True
+        assert is_emp is False
+        assert taxon == "lynx_rufus"
+
+        taxon, is_anim, is_emp, warns = _resolve_category("mountain_lion", 40)
+        assert is_anim is True
+        assert is_emp is False
+        assert taxon == "puma_concolor"
 
 
 # ===========================================================================

@@ -188,8 +188,13 @@ class CrossCameraAssociationPair(BaseContractModel):
     end_time_a: str = Field(..., description="ISO 8601 end timestamp for encounter A.")
     start_time_b: str = Field(..., description="ISO 8601 start timestamp for encounter B.")
     end_time_b: str = Field(..., description="ISO 8601 end timestamp for encounter B.")
-    nominal_gap_seconds: float = Field(..., description="Nominal temporal gap in seconds between encounter intervals.")
-    effective_gap_seconds: float = Field(..., description="Conservative temporal gap in seconds accounting for clock uncertainty.")
+    nominal_gap_seconds: float = Field(..., description="Nominal temporal gap in seconds between encounter intervals: max(0, start_B - end_A, start_A - end_B).")
+    min_possible_gap_seconds: float = Field(..., description="Exact attainable lower bound on temporal separation in seconds accounting for combined pairwise clock uncertainty: max(0, nominal_gap - uncertainty).")
+    max_possible_gap_seconds: float = Field(..., description="Exact attainable upper bound on temporal separation in seconds accounting for combined pairwise clock uncertainty: max(0, (start_B - end_A) + U, (start_A - end_B) + U). Note: for overlapping intervals, G + U is an enclosure, while this field calculates the exact attainable supremum.")
+    effective_gap_seconds: float = Field(..., description="Backward-compatible alias for min_possible_gap_seconds. Lower bound of possible gap range, NOT a definitive corrected gap.")
+    temporal_eligibility: str = Field(..., description="Eligibility classification: 'definitely_within_threshold' if max_possible_gap <= threshold else 'possibly_within_threshold'.")
+    clock_offset_seconds_a: float | None = Field(default=None, description="Applied clock offset in seconds for camera A (t_corrected = t_raw + offset).")
+    clock_offset_seconds_b: float | None = Field(default=None, description="Applied clock offset in seconds for camera B (t_corrected = t_raw + offset).")
     temporal_relation: str = Field(..., description="'overlapping' or 'disjoint'.")
     observed_interval_order: str = Field(..., description="'overlapping', 'A_before_B', or 'B_before_A'.")
     spatial_check_status: str = Field(
@@ -198,7 +203,7 @@ class CrossCameraAssociationPair(BaseContractModel):
     )
     camera_distance_meters: float | None = Field(
         default=None,
-        description="Geodesic distance between cameras in meters if coordinates exist and are evaluated."
+        description="Approximate spherical great-circle camera separation in meters if coordinates exist and are evaluated. Camera separation is not animal travel distance."
     )
     spatial_units: str | None = Field(
         default=None,
@@ -228,6 +233,9 @@ class CrossCameraAssociationsResult(BaseContractModel):
     rule_version: str = Field(default="cross_camera_association_v1", description="Association rule engine version.")
     clock_comparability_policy: str = Field(..., description="Policy used for inter-camera clock comparisons.")
     clock_uncertainty_seconds: float = Field(default=0.0, description="Clock uncertainty propagated in seconds.")
+    clock_offsets_applied: dict[str, float] | None = Field(default=None, description="Per-camera clock offsets applied in seconds (t_corrected = t_raw + offset).")
+    timestamps_pre_corrected: bool = Field(default=False, description="Whether timestamps were pre-corrected prior to analysis.")
+    correction_provenance: str | None = Field(default=None, description="Documented provenance for pre-corrected timestamps or offset source.")
     spatial_mode: str = Field(..., description="Spatial mode used during evaluation.")
     temporal_threshold_seconds: float = Field(..., description="Maximum allowable temporal gap in seconds.")
     spatial_threshold_meters: float | None = Field(default=None, description="Maximum allowable camera distance in meters if set.")

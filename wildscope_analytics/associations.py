@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from wildscope_analytics.contracts.entities import Encounter
@@ -68,8 +68,10 @@ def haversine_distance_meters(
     lon2: float,
 ) -> float:
     """
-    Computes great-circle geodesic distance between two WGS84 coordinates
-    on a spherical Earth model with mean radius 6,371,000 meters.
+    Computes approximate spherical great-circle camera separation between two
+    WGS84 coordinates on a spherical Earth model with mean radius 6,371,000 meters.
+    Camera separation is not animal travel distance; actual animal travel paths,
+    topography, vegetation, and physical barriers differ substantially from straight-line great-circle distance.
     """
     phi1 = math.radians(lat1)
     phi2 = math.radians(lat2)
@@ -94,16 +96,27 @@ def _generate_explanation(
     enc_b_id: str,
     cam_b_id: str,
     shared_taxa: list[str],
-    effective_gap: float,
+    nominal_gap: float,
+    min_gap: float,
+    max_gap: float,
+    temporal_eligibility: str,
     order: str,
     dist: float | None,
 ) -> str:
     """Generates a deterministic plain-language explanation for an association."""
     taxa_str = ", ".join(f"'{t}'" for t in shared_taxa)
-    gap_str = f"{effective_gap:.1f}s" if effective_gap > 0 else "0.0s (overlapping)"
+    if nominal_gap == 0.0 and min_gap == 0.0 and max_gap == 0.0:
+        gap_str = "0.0s (overlapping intervals)"
+    elif min_gap == max_gap:
+        gap_str = f"nominal gap {nominal_gap:.1f}s ({temporal_eligibility})"
+    else:
+        gap_str = (
+            f"nominal gap {nominal_gap:.1f}s (possible gap range: [{min_gap:.1f}s, {max_gap:.1f}s] "
+            f"under clock uncertainty; {temporal_eligibility})"
+        )
 
     if dist is not None:
-        spatial_str = f"Measured camera separation is {dist:.1f} meters."
+        spatial_str = f"Approximate spherical great-circle camera separation is {dist:.1f} meters."
     else:
         spatial_str = "Camera distance is unknown or not evaluated; spatial feasibility was not evaluated."
 
@@ -137,6 +150,12 @@ def compute_cross_camera_associations(
     # 1. Normalize request to CrossCameraAssociationRequest
     if isinstance(request, AnalysisRequest):
         params = request.parameters or {}
+        policy_raw = params.get("clock_comparability_policy", ClockComparabilityPolicy.ANALYST_ASSUMPTION)
+        clock_policy = policy_raw if isinstance(policy_raw, ClockComparabilityPolicy) else ClockComparabilityPolicy(policy_raw)
+
+        spatial_raw = params.get("spatial_mode", SpatialMode.TIME_SPECIES_ONLY)
+        sp_mode = spatial_raw if isinstance(spatial_raw, SpatialMode) else SpatialMode(spatial_raw)
+
         assoc_req = CrossCameraAssociationRequest(
             metric=request.metric,
             species_ids=request.species_ids,
@@ -149,13 +168,9 @@ def compute_cross_camera_associations(
                 "max_temporal_separation_seconds",
                 3600.0
             ),
-            clock_comparability_policy=ClockComparabilityPolicy(
-                params.get("clock_comparability_policy", ClockComparabilityPolicy.ANALYST_ASSUMPTION.value)
-            ),
+            clock_comparability_policy=clock_policy,
             clock_uncertainty_seconds=params.get("clock_uncertainty_seconds", 0.0),
-            spatial_mode=SpatialMode(
-                params.get("spatial_mode", SpatialMode.TIME_SPECIES_ONLY.value)
-            ),
+            spatial_mode=sp_mode,
             max_spatial_distance_meters=params.get("max_spatial_distance_meters", None),
             inclusion_policy=request.inclusion_policy,
             min_confidence=request.min_confidence,
@@ -296,17 +311,137 @@ def compute_cross_camera_associations(
             warnings=["No clock comparability assumption provided; temporal separation cannot be computed."],
         )
 
-    if assoc_req.clock_comparability_policy == ClockComparabilityPolicy.ANALYST_ASSUMPTION:
+    clock_offsets: dict[str, float] | None = None
+    timestamps_pre_corrected = False
+    correction_provenance: str | None = None
+
+    if assoc_req.clock_comparability_policy == ClockComparabilityPolicy.OFFSETS_KNOWN:
+        raw_offsets = assoc_req.parameters.get("clock_offsets")
+        has_pre_corrected = assoc_req.parameters.get("timestamps_pre_corrected") is True
+        prov = assoc_req.parameters.get("correction_provenance")
+
+        # Ambiguous double correction: both clock_offsets and timestamps_pre_corrected=True supplied
+        if raw_offsets is not None and has_pre_corrected:
+            return AnalysisResponseEnvelope(
+                status=ResponseStatus.INVALID_REQUEST,
+                schema_version=CURRENT_SCHEMA_VERSION,
+                dataset_revision=snapshot.metadata.dataset_revision,
+                metric=assoc_req.metric,
+                applied_filters={"clock_comparability_policy": assoc_req.clock_comparability_policy.value},
+                result=None,
+                metric_units="associated encounter pairs",
+                limitations=[
+                    "Ambiguous clock configuration: both 'clock_offsets' and 'timestamps_pre_corrected=True' were supplied. "
+                    "Cannot determine whether timestamps have already been corrected or require offset addition."
+                ],
+                errors=[
+                    ValidationErrorDetail(
+                        code=ValidationErrorCode.SCHEMA_VIOLATION,
+                        message="Ambiguous double correction: cannot supply both clock_offsets and timestamps_pre_corrected=True.",
+                        field_path="parameters.clock_offsets",
+                    )
+                ],
+            )
+
+        if has_pre_corrected:
+            if not prov:
+                return AnalysisResponseEnvelope(
+                    status=ResponseStatus.INSUFFICIENT_DATA,
+                    schema_version=CURRENT_SCHEMA_VERSION,
+                    dataset_revision=snapshot.metadata.dataset_revision,
+                    metric=assoc_req.metric,
+                    applied_filters={"clock_comparability_policy": assoc_req.clock_comparability_policy.value},
+                    result=None,
+                    metric_units="associated encounter pairs",
+                    limitations=[
+                        "Pre-corrected timestamps declared under OFFSETS_KNOWN without documented correction provenance "
+                        "in parameters['correction_provenance']."
+                    ],
+                    warnings=["Pre-corrected timestamps require documented correction provenance."],
+                )
+            timestamps_pre_corrected = True
+            correction_provenance = str(prov)
+            limitations.append(f"Using pre-corrected timestamps with documented provenance: '{correction_provenance}'.")
+
+        elif raw_offsets is not None:
+            if not isinstance(raw_offsets, dict):
+                return AnalysisResponseEnvelope(
+                    status=ResponseStatus.INVALID_REQUEST,
+                    schema_version=CURRENT_SCHEMA_VERSION,
+                    dataset_revision=snapshot.metadata.dataset_revision,
+                    metric=assoc_req.metric,
+                    applied_filters={"clock_comparability_policy": assoc_req.clock_comparability_policy.value},
+                    result=None,
+                    metric_units="associated encounter pairs",
+                    limitations=["'clock_offsets' in parameters must be a dictionary mapping camera_id to offset seconds."],
+                    errors=[
+                        ValidationErrorDetail(
+                            code=ValidationErrorCode.SCHEMA_VIOLATION,
+                            message="'clock_offsets' must be a dictionary of camera_id to float seconds.",
+                            field_path="parameters.clock_offsets",
+                        )
+                    ],
+                )
+            # Validate all values are finite numbers
+            validated_offsets: dict[str, float] = {}
+            for cid, val in raw_offsets.items():
+                if not isinstance(val, (int, float)) or not math.isfinite(val):
+                    return AnalysisResponseEnvelope(
+                        status=ResponseStatus.INVALID_REQUEST,
+                        schema_version=CURRENT_SCHEMA_VERSION,
+                        dataset_revision=snapshot.metadata.dataset_revision,
+                        metric=assoc_req.metric,
+                        applied_filters={"clock_comparability_policy": assoc_req.clock_comparability_policy.value},
+                        result=None,
+                        metric_units="associated encounter pairs",
+                        limitations=[f"Non-finite or invalid clock offset for camera '{cid}': {val}."],
+                        errors=[
+                            ValidationErrorDetail(
+                                code=ValidationErrorCode.SCHEMA_VIOLATION,
+                                message=f"Clock offset for camera '{cid}' must be a finite number in seconds.",
+                                field_path=f"parameters.clock_offsets.{cid}",
+                            )
+                        ],
+                    )
+                validated_offsets[str(cid)] = float(val)
+            clock_offsets = validated_offsets
+            correction_provenance = str(prov) if prov else "parameters.clock_offsets"
+            limitations.append(
+                f"Per-camera clock offsets applied (t_corrected = t_raw + offset_seconds). "
+                f"Offsets defined for {len(clock_offsets)} camera(s)."
+            )
+        else:
+            # Neither valid clock_offsets nor timestamps_pre_corrected=True
+            # Uncertainty bounds alone do NOT satisfy OFFSETS_KNOWN!
+            return AnalysisResponseEnvelope(
+                status=ResponseStatus.INSUFFICIENT_DATA,
+                schema_version=CURRENT_SCHEMA_VERSION,
+                dataset_revision=snapshot.metadata.dataset_revision,
+                metric=assoc_req.metric,
+                applied_filters={"clock_comparability_policy": assoc_req.clock_comparability_policy.value},
+                result=None,
+                metric_units="associated encounter pairs",
+                limitations=[
+                    "Clock comparability policy OFFSETS_KNOWN requires either valid per-camera 'clock_offsets' "
+                    "or 'timestamps_pre_corrected=True' with 'correction_provenance'. "
+                    "Uncertainty bounds alone do not constitute offset corrections."
+                ],
+                warnings=[
+                    "OFFSETS_KNOWN requires verified per-camera clock_offsets or pre-corrected timestamps with provenance."
+                ],
+            )
+
+        if assoc_req.clock_uncertainty_seconds > 0.0:
+            limitations.append(
+                f"Combined pairwise clock uncertainty bound ±{assoc_req.clock_uncertainty_seconds:.1f}s propagated."
+            )
+    elif assoc_req.clock_comparability_policy == ClockComparabilityPolicy.ANALYST_ASSUMPTION:
         limitations.append(
             "Inter-camera clock alignment relies on analyst assumption; physical camera clock drift is unverified."
         )
     elif assoc_req.clock_comparability_policy == ClockComparabilityPolicy.DOCUMENTED_SYNC:
         limitations.append(
             "Deployment clocks verified synchronized (e.g. NTP, GPS, or calibration audit)."
-        )
-    elif assoc_req.clock_comparability_policy == ClockComparabilityPolicy.OFFSETS_KNOWN:
-        limitations.append(
-            f"Known clock uncertainty ±{assoc_req.clock_uncertainty_seconds:.1f}s conservatively propagated."
         )
 
     # 7. Spatial prerequisites check
@@ -364,10 +499,34 @@ def compute_cross_camera_associations(
                 exclusion_reasons.append("Encounter timestamps lack timezone awareness")
             continue
 
-        # Check time window filter
-        if assoc_req.start_time is not None and enc.end_time < assoc_req.start_time:
+        # Check required camera offset under OFFSETS_KNOWN with clock_offsets
+        if clock_offsets is not None and enc.camera_id not in clock_offsets:
+            return AnalysisResponseEnvelope(
+                status=ResponseStatus.INSUFFICIENT_DATA,
+                schema_version=CURRENT_SCHEMA_VERSION,
+                dataset_revision=snapshot.metadata.dataset_revision,
+                metric=assoc_req.metric,
+                applied_filters={"clock_comparability_policy": assoc_req.clock_comparability_policy.value},
+                result=None,
+                metric_units="associated encounter pairs",
+                limitations=[
+                    f"Camera '{enc.camera_id}' has encounters in scope but is missing from parameters['clock_offsets']. "
+                    "Under OFFSETS_KNOWN, all cameras with scoped encounters must have an explicit offset."
+                ],
+                warnings=[f"Missing required clock offset for camera '{enc.camera_id}'."],
+            )
+
+        # Apply per-camera clock offset (sign convention: t_corrected = t_raw + offset_seconds)
+        # Note: does NOT mutate the source snapshot.
+        offset_seconds = clock_offsets[enc.camera_id] if clock_offsets is not None else 0.0
+        offset_delta = timedelta(seconds=offset_seconds)
+        corr_start = enc.start_time + offset_delta
+        corr_end = enc.end_time + offset_delta
+
+        # Check time window filter against corrected timestamps
+        if assoc_req.start_time is not None and corr_end < assoc_req.start_time:
             continue
-        if assoc_req.end_time is not None and enc.start_time > assoc_req.end_time:
+        if assoc_req.end_time is not None and corr_start > assoc_req.end_time:
             continue
 
         # Extract eligible species from member detections
@@ -436,8 +595,11 @@ def compute_cross_camera_associations(
             "detection_ids": sorted(enc_det_ids),
             "observation_ids": sorted(set(enc_obs_ids)),
             "provenance_map": provenance_map,
-            "start_time": enc.start_time,
-            "end_time": enc.end_time,
+            "start_time": corr_start,
+            "end_time": corr_end,
+            "raw_start_time": enc.start_time,
+            "raw_end_time": enc.end_time,
+            "clock_offset_seconds": offset_seconds if clock_offsets is not None else None,
         }
 
     total_eligible_encounters = len(eligible_encounters)
@@ -537,11 +699,24 @@ def compute_cross_camera_associations(
                 diff_1_2 = (t_start_2 - t_end_1).total_seconds()
                 diff_2_1 = (t_start_1 - t_end_2).total_seconds()
                 nominal_gap = max(0.0, diff_1_2, diff_2_1)
-                effective_gap = max(0.0, nominal_gap - uncertainty)
+                min_possible_gap = max(0.0, nominal_gap - uncertainty)
+                # Exact attainable supremum over u in [-uncertainty, uncertainty]:
+                # For disjoint intervals, this equals nominal_gap + uncertainty.
+                # For overlapping intervals, max(0.0, diff_1_2 + U, diff_2_1 + U) computes the exact attainable
+                # upper bound rather than an unattainable G + U enclosure.
+                max_possible_gap = max(0.0, diff_1_2 + uncertainty, diff_2_1 + uncertainty)
+                effective_gap = min_possible_gap
 
                 # Temporal threshold evaluation (boundary included)
-                if effective_gap > max_gap:
+                # Eligibility means the candidate is possibly within the temporal separation window
+                if min_possible_gap > max_gap:
                     continue
+
+                temporal_eligibility = (
+                    "definitely_within_threshold"
+                    if max_possible_gap <= max_gap
+                    else "possibly_within_threshold"
+                )
 
                 # Temporal relation and ordering
                 if nominal_gap == 0.0:
@@ -584,7 +759,7 @@ def compute_cross_camera_associations(
                         )
                         spatial_units = "meters"
                         spatial_note = (
-                            f"Measured camera separation is {dist_m:.1f} meters. "
+                            f"Approximate spherical great-circle camera separation is {dist_m:.1f} meters. "
                             "Camera separation is not animal travel distance; biological movement feasibility is not validated."
                         )
                         if assoc_req.max_spatial_distance_meters is not None:
@@ -606,7 +781,7 @@ def compute_cross_camera_associations(
                         )
                         spatial_units = "meters"
                         spatial_note = (
-                            f"Measured camera separation is {dist_m:.1f} meters. "
+                            f"Approximate spherical great-circle camera separation is {dist_m:.1f} meters. "
                             "Camera separation is not animal travel distance; biological movement feasibility is not validated."
                         )
                         if assoc_req.max_spatial_distance_meters is not None:
@@ -635,7 +810,10 @@ def compute_cross_camera_associations(
                     enc_1_id, data_1["camera_id"],
                     enc_2_id, data_2["camera_id"],
                     shared_taxa,
-                    effective_gap,
+                    nominal_gap,
+                    min_possible_gap,
+                    max_possible_gap,
+                    temporal_eligibility,
                     observed_order,
                     dist_m,
                 )
@@ -663,7 +841,12 @@ def compute_cross_camera_associations(
                     start_time_b=t_start_2.isoformat(),
                     end_time_b=t_end_2.isoformat(),
                     nominal_gap_seconds=nominal_gap,
+                    min_possible_gap_seconds=min_possible_gap,
+                    max_possible_gap_seconds=max_possible_gap,
                     effective_gap_seconds=effective_gap,
+                    temporal_eligibility=temporal_eligibility,
+                    clock_offset_seconds_a=data_1["clock_offset_seconds"],
+                    clock_offset_seconds_b=data_2["clock_offset_seconds"],
                     temporal_relation=temporal_relation,
                     observed_interval_order=observed_order,
                     spatial_check_status=spatial_status.value,
@@ -710,6 +893,9 @@ def compute_cross_camera_associations(
         rule_version="cross_camera_association_v1",
         clock_comparability_policy=assoc_req.clock_comparability_policy.value,
         clock_uncertainty_seconds=assoc_req.clock_uncertainty_seconds,
+        clock_offsets_applied=clock_offsets,
+        timestamps_pre_corrected=timestamps_pre_corrected,
+        correction_provenance=correction_provenance,
         spatial_mode=assoc_req.spatial_mode.value,
         temporal_threshold_seconds=assoc_req.max_temporal_separation_seconds,
         spatial_threshold_meters=assoc_req.max_spatial_distance_meters,
@@ -778,6 +964,7 @@ def _exhaustive_pairwise_associations(
     # Extract species per encounter
     enc_data = {}
     focal_species = set(request.species_ids) if request.species_ids else None
+    clock_offsets = request.parameters.get("clock_offsets") if request.parameters else None
 
     for enc in snapshot.encounters:
         if enc.start_time is None or enc.end_time is None:
@@ -794,17 +981,21 @@ def _exhaustive_pairwise_associations(
                 if focal_species is None or eff.taxon_id in focal_species:
                     taxa.add(eff.taxon_id)
         if taxa:
-            enc_data[enc.id] = (enc, taxa)
+            offset_sec = float(clock_offsets[enc.camera_id]) if clock_offsets and enc.camera_id in clock_offsets else 0.0
+            from datetime import timedelta
+            corr_start = enc.start_time + timedelta(seconds=offset_sec)
+            corr_end = enc.end_time + timedelta(seconds=offset_sec)
+            enc_data[enc.id] = (enc, taxa, corr_start, corr_end)
 
     enc_ids = sorted(enc_data.keys())
     matching_ids = []
 
     for i in range(len(enc_ids)):
         id_1 = enc_ids[i]
-        enc_1, taxa_1 = enc_data[id_1]
+        enc_1, taxa_1, start_1, end_1 = enc_data[id_1]
         for j in range(i + 1, len(enc_ids)):
             id_2 = enc_ids[j]
-            enc_2, taxa_2 = enc_data[id_2]
+            enc_2, taxa_2, start_2, end_2 = enc_data[id_2]
 
             # Different camera
             if enc_1.camera_id == enc_2.camera_id:
@@ -815,9 +1006,9 @@ def _exhaustive_pairwise_associations(
             if not shared:
                 continue
 
-            # Temporal gap
-            diff_1_2 = (enc_2.start_time - enc_1.end_time).total_seconds()
-            diff_2_1 = (enc_1.start_time - enc_2.end_time).total_seconds()
+            # Temporal gap using offset-corrected timestamps
+            diff_1_2 = (start_2 - end_1).total_seconds()
+            diff_2_1 = (start_1 - end_2).total_seconds()
             nominal_gap = max(0.0, diff_1_2, diff_2_1)
             effective_gap = max(0.0, nominal_gap - request.clock_uncertainty_seconds)
 

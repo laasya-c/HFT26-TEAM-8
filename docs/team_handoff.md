@@ -211,27 +211,51 @@ Cross-camera correlation finds pairs of recorded encounters from different camer
 > Same-species sightings close in time can be coincidental. Every result strictly preserves this limitation.
 
 ### 4.2 Architectural Design & Rules
-- **Entry Points:** `analyze(snapshot, request)` with `AnalysisMetric.CROSS_CAMERA_ASSOCIATIONS` or `find_cross_camera_associations(snapshot, request)`.
-- **Primary Inputs:** Operational encounters from Harsh/Santosh with timezone-aware start and end timestamps.
+- **Entry Points:**
+  - Unified entry point: `analyze(snapshot, request)` with `AnalysisMetric.CROSS_CAMERA_ASSOCIATIONS` and explicit parameters (e.g. `clock_comparability_policy`).
+  - Dedicated entry point: `find_cross_camera_associations(snapshot, request)` accepting either `CrossCameraAssociationRequest` or `AnalysisRequest`.
+  - Both entry points have identical analytical semantics and verified parity.
+- **Primary Inputs & Prerequisites:**
+  - Operational encounters from Harsh/Santosh with timezone-aware start and end timestamps.
+  - GPS coordinates are **optional** for `time_species_only` mode (and optional for `spatial_when_available`). Missing GPS coordinates do NOT prevent valid time/species analysis.
+  - Calibrated probabilities are **not required** for rule-based association; the engine operates on categorical species decisions (effective labels) and configurable classification confidence cutoffs (`min_confidence`).
+  - Detection terminology is strictly maintained: `animal_detection_confidence` (presence of an animal, detector output) is kept distinct from `classification_confidence` (species classification score, classifier output).
 - **Species Resolution:** Evaluates member detection effective labels using Phase 2 rules. Excludes rejected detections, empty frames, non-animal triggers, unreviewed predictions (under `REVIEWED_ONLY`), and ambiguous review conflicts. Deduplicates repeated detections within an encounter.
 - **Exact Taxon Matching:** Encounters associate only when their eligible species sets share at least one concrete taxon. `unknown` animal taxa never match one another.
 - **Camera Separation:** Compares only encounters from different cameras (`camera_id_a != camera_id_b`). Excludes same-camera pairs and self-pairs.
-- **Temporal Interval Gap:**
+- **Temporal Interval Gap & Uncertainty Propagation:**
   $$\text{nominal\_gap} = \max(0.0, (B.\text{start} - A.\text{end}).\text{total\_seconds}(), (A.\text{start} - B.\text{end}).\text{total\_seconds}())$$
-  $$\text{effective\_gap} = \max(0.0, \text{nominal\_gap} - \text{clock\_uncertainty\_seconds})$$
-  Passes temporal rule when $\text{effective\_gap} \le \text{max\_temporal\_separation\_seconds}$ (boundary included).
+  - `clock_uncertainty_seconds` represents the **combined pairwise clock-offset uncertainty bound** $U_{\text{pair}} \ge 0$ between cameras ($U_{\text{pair}} = u_A + u_B$).
+  - **Possible Gap Range & Exact Extrema:**
+    - While $[\max(0, G - U_{\text{pair}}), G + U_{\text{pair}}]$ provides a conservative enclosure, the upper endpoint $G + U_{\text{pair}}$ is not always attainable for overlapping intervals (e.g. an interval nested within a longer interval remains overlapping under all shifts $|u| \le U$, so its true maximum gap is 0.0s).
+    - The engine calculates the **exact attainable extrema** from relative interval positions:
+      $$\text{min\_possible\_gap\_seconds} = \max(0.0, G - U_{\text{pair}})$$
+      $$\text{max\_possible\_gap\_seconds} = \max\Big(0.0,\; (s_B - e_A) + U_{\text{pair}},\; (s_A - e_B) + U_{\text{pair}}\Big)$$
+  - $\text{effective\_gap\_seconds} = \text{min\_possible\_gap\_seconds}$ is the conservative lower bound of this range, **NOT a definitive corrected gap**.
+  - **Threshold Eligibility:** Encounters satisfy the temporal rule if $\text{min\_possible\_gap\_seconds} \le \text{max\_temporal\_separation\_seconds}$ (**possibly within the temporal window**).
+  - Pairs where $\text{max\_possible\_gap\_seconds} \le \text{max\_temporal\_separation\_seconds}$ are classified as `definitely_within_threshold`, whereas others are classified as `possibly_within_threshold`.
   - Overlapping intervals: nominal gap is 0.0s; described as overlapping recorded intervals without asserting movement direction.
   - Disjoint intervals: reports observed interval order (`A_before_B` or `B_before_A`) without equating this to animal travel.
 - **Clock Comparability Policies:**
-  - `DOCUMENTED_SYNC`: Verified physical clock synchronization across deployment.
+  - `DOCUMENTED_SYNC`: Verified physical clock synchronization across deployment (NTP, GPS, or calibration audit).
   - `ANALYST_ASSUMPTION`: Explicit analyst policy assuming synchronization within stated limits.
-  - `OFFSETS_KNOWN`: Conservative propagation of known clock uncertainty.
+  - `OFFSETS_KNOWN`:
+    - **Uncertainty bounds alone do NOT satisfy `OFFSETS_KNOWN`** (`clock_uncertainty_seconds > 0` and clock-offset corrections are distinct concepts).
+    - Requires either:
+      1. **Valid per-camera `clock_offsets` dict** in `parameters`: mapping `camera_id -> float (seconds)`.
+         - *Sign convention:* $t_{\text{corrected}} = t_{\text{raw}} + \text{offset\_seconds}$. A positive offset advances a slow clock; a negative offset delays a fast clock.
+         - *Non-mutation:* Applied to encounter start and end times for sorting, sliding-window pruning, and gap calculations without mutating the source snapshot.
+         - *Missing offsets:* Scoped cameras missing from `clock_offsets` return `INSUFFICIENT_DATA`.
+         - *Non-finite values:* Non-finite offset values (NaN, inf) return `INVALID_REQUEST`.
+         - *Chronological ordering:* Chronological order is established *after* offset application, ensuring encounters are ordered and pruned correctly.
+      2. **Pre-corrected timestamps:** `parameters['timestamps_pre_corrected'] = True` with mandatory `parameters['correction_provenance']`. Omitting provenance returns `INSUFFICIENT_DATA`.
+    - *Ambiguous double correction:* Supplying both `clock_offsets` and `timestamps_pre_corrected = True` returns `INVALID_REQUEST`.
   - `UNKNOWN`: Inter-camera clock alignment is unverified; returns `INSUFFICIENT_DATA`.
 - **Spatial Modes:**
   1. `time_species_only`: GPS coordinates optional; `spatial_check_status = "not_evaluated"`.
-  2. `spatial_when_available`: Computes WGS84 Haversine distance when coordinates exist; checks `max_spatial_distance_meters` if set. For cameras lacking GPS, retains eligible time/species candidate with `spatial_check_status = "unavailable"`.
+  2. `spatial_when_available`: Computes approximate spherical great-circle camera separation using WGS84 Haversine distance when coordinates exist; checks `max_spatial_distance_meters` if set. For cameras lacking GPS, retains eligible time/species candidate with `spatial_check_status = "unavailable"`.
   3. `spatial_required`: Evaluates only pairs with valid coordinates. If no cameras have GPS, returns `UNAVAILABLE`.
-  - *Disclaimer:* Measured camera separation is not animal travel distance; biological movement feasibility is not validated.
+  - *Mandatory Spatial Limitation:* Approximate spherical great-circle camera separation is strictly distinct from animal travel distance; biological movement feasibility is not validated.
 - **Pair Deduplication & Non-Greedy Retention:**
   - Canonical order: `association_id = f"assoc:{min(id_a, id_b)}::{max(id_a, id_b)}"`. No mirrored duplicates.
   - All plausible candidates are retained within declared scope (no greedy 1-1 winner-take-all matching).
@@ -239,9 +263,13 @@ Cross-camera correlation finds pairs of recorded encounters from different camer
 - **Limits & Performance:**
   - `result_limit`: Evaluates declared scope, returns top-k. Response status remains `OK`.
   - `evaluation_limit`: Bounds pair simulation; reports `evaluation_policy`, sets `is_coverage_complete = False`, and sets status to `PARTIAL`.
-  - Performance: Sliding-window indexing by species and sorted start times verified for exact parity against an exhaustive $O(N^2)$ reference implementation.
+  - Performance: Sliding-window indexing by species and sorted start times verified for exact parity against an exhaustive $O(N^2)$ reference implementation, including edge cases with non-zero uncertainty and long overlapping encounters.
 
 ### 4.3 Category Mapping Corrections (Part B)
+- **Verified Official Caltech Category IDs & Names (`caltech_images_20210113.json`):**
+  - **Category ID 30 (`name = "empty"`):** Mapped to `is_animal = False, is_empty = True`.
+  - **Category ID 33 (`name = "car"`):** Mapped to `is_animal = False, is_empty = False`.
+  - **Category IDs 1, 3, 5, 6, 7, 8, 9, 10, 11, 14, 16, 21, 34, 37, 39, 40, 51, 66, 97, 99:** All 20 wildlife categories mapped to `is_animal = True, is_empty = False` with corresponding WildScope taxon IDs (e.g. ID 9 `canis_latrans`, ID 6 `lynx_rufus`, ID 40 `puma_concolor`).
 - Explicit vehicle and person categories (`car`, `vehicle`, `truck`, `motorcycle`, `person`, `human`, `pedestrian`) are classified as `is_animal = False, is_empty = False`.
 - `empty` remains distinct as `is_animal = False, is_empty = True`.
 - Unmapped wildlife remains visible as unresolved animal taxa in `categories_unmapped`.
@@ -313,13 +341,30 @@ python -m pytest tests/test_phase4_associations.py -v
 # 3. Regenerate all JSON Schemas in schemas/
 python -m wildscope_analytics.schema_generator
 
-# 4. Verify find_cross_camera_associations() in interactive Python
+# 4. Verify unified analyze() with explicit clock_comparability_policy in interactive Python
 python -c "
-from wildscope_analytics import Snapshot, load_and_validate_snapshot, analyze, CrossCameraAssociationRequest
+from wildscope_analytics import Snapshot, load_and_validate_snapshot, analyze, AnalysisRequest, AnalysisMetric
+snap, _ = load_and_validate_snapshot('examples/valid_snapshot.json')
+req = AnalysisRequest(
+    metric=AnalysisMetric.CROSS_CAMERA_ASSOCIATIONS,
+    parameters={
+        'clock_comparability_policy': 'analyst_assumption',
+        'max_temporal_separation_seconds': 3600.0,
+        'spatial_mode': 'time_species_only',
+    }
+)
+resp = analyze(snap, req)
+print('Unified Status:', resp.status)
+print('Matching pairs:', resp.result['total_matching_pairs_found'])
+"
+
+# 5. Verify dedicated find_cross_camera_associations() in interactive Python
+python -c "
+from wildscope_analytics import load_and_validate_snapshot, find_cross_camera_associations, CrossCameraAssociationRequest
 snap, _ = load_and_validate_snapshot('examples/valid_snapshot.json')
 req = CrossCameraAssociationRequest()
-resp = analyze(snap, req)
-print('Status:', resp.status)
+resp = find_cross_camera_associations(snap, req)
+print('Dedicated Status:', resp.status)
 print('Matching pairs:', resp.result['total_matching_pairs_found'])
 "
 ```

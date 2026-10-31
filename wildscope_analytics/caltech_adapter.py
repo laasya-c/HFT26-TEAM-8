@@ -142,6 +142,14 @@ _CCT_CATEGORY_MAP: dict[str, tuple[str | None, bool, bool]] = {
     "animal":         (None,                    True,  False),
 }
 
+# Real CCT 20210113 official source category IDs:
+# 30: "empty" (is_animal=False, is_empty=True)
+# 33: "car" (is_animal=False, is_empty=False)
+_CCT_KNOWN_SOURCE_ID_MAP: dict[int, tuple[str | None, bool, bool]] = {
+    30: (None, False, True),   # empty
+    33: (None, False, False),  # car
+}
+
 _NON_ANIMAL_KEYWORDS = ("car", "vehicle", "truck", "motorcycle", "bicycle", "person", "human", "pedestrian", "equipment", "debris")
 _ANIMAL_KEYWORDS = ("species", "wildlife", "animal", "mammal", "bird", "reptile", "amphibian", "insect", "fauna", "creature")
 
@@ -187,6 +195,10 @@ def _resolve_category(
     Unknown categories without clear indicators are flagged and not silently assumed animal.
     """
     key = cat_name.lower().strip()
+    if cat_id in _CCT_KNOWN_SOURCE_ID_MAP:
+        taxon, is_anim, is_emp = _CCT_KNOWN_SOURCE_ID_MAP[cat_id]
+        return taxon, is_anim, is_emp, []
+
     if key in _CCT_CATEGORY_MAP:
         taxon, is_anim, is_emp = _CCT_CATEGORY_MAP[key]
         return taxon, is_anim, is_emp, []
